@@ -86,7 +86,9 @@ impl Measurement {
             return 0.0;
         }
         let mean = self.mean_ns();
-        let variance = self.durations_ns.iter()
+        let variance = self
+            .durations_ns
+            .iter()
             .map(|&v| {
                 let diff = v as f64 - mean;
                 diff * diff
@@ -205,9 +207,7 @@ impl SystemInfo {
                 .and_then(|s| {
                     s.lines()
                         .find(|l| l.starts_with("MemTotal:"))
-                        .and_then(|l| {
-                            l.split_whitespace().nth(1)?.parse::<u64>().ok()
-                        })
+                        .and_then(|l| l.split_whitespace().nth(1)?.parse::<u64>().ok())
                 })
                 .map(|kb| kb / 1024)
                 .unwrap_or(0)
@@ -295,7 +295,11 @@ pub fn detect_regressions(
     }
 
     for cur in &current.measurements {
-        let key = (cur.format.clone(), cur.dataset.clone(), cur.operation.clone());
+        let key = (
+            cur.format.clone(),
+            cur.dataset.clone(),
+            cur.operation.clone(),
+        );
         let Some(base) = baseline_map.get(&key) else {
             continue; // New measurement, no baseline to compare.
         };
@@ -324,8 +328,7 @@ pub fn detect_regressions(
         }
 
         // 2. Size regression.
-        if let (Some(base_size), Some(cur_size)) =
-            (base.serialized_size, cur.serialized_size)
+        if let (Some(base_size), Some(cur_size)) = (base.serialized_size, cur.serialized_size)
             && base_size > 0
         {
             let change = (cur_size as f64 - base_size as f64) / base_size as f64;
@@ -367,8 +370,7 @@ pub fn detect_regressions(
         }
 
         // 4. Memory regression.
-        if let (Some(base_mem), Some(cur_mem)) =
-            (base.peak_rss_bytes, cur.peak_rss_bytes)
+        if let (Some(base_mem), Some(cur_mem)) = (base.peak_rss_bytes, cur.peak_rss_bytes)
             && base_mem > 0
         {
             let change = (cur_mem as f64 - base_mem as f64) / base_mem as f64;

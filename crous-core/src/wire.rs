@@ -81,12 +81,15 @@ pub mod flags {
 }
 
 /// Compression type identifiers for block headers.
+/// Citation: https://facebook.github.io/zstd/ and https://github.com/lz4/lz4
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CompressionType {
     None = 0x00,
     Zstd = 0x01,
     Snappy = 0x02,
+    /// LZ4 block compression: https://github.com/lz4/lz4
+    Lz4 = 0x03,
 }
 
 impl CompressionType {
@@ -95,6 +98,7 @@ impl CompressionType {
             0x00 => Some(Self::None),
             0x01 => Some(Self::Zstd),
             0x02 => Some(Self::Snappy),
+            0x03 => Some(Self::Lz4),
             _ => None,
         }
     }

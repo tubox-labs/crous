@@ -73,6 +73,29 @@ binary representations.
 | 0x00 | None   | No compression           |
 | 0x01 | Zstd   | Zstandard compression    |
 | 0x02 | Snappy | Snappy compression       |
+| 0x03 | LZ4    | LZ4 frame compression    |
+
+> **Adaptive compression** (feature `lz4`/`zstd`/`snappy`): the encoder
+> can sample the first N bytes of a block and select the algorithm that
+> achieves the best ratio above a configurable threshold. See
+> `AdaptiveSelector` in crous-compression.
+
+### 2.5 Compressed Block Wire Format
+
+When a block is compressed, the on-wire payload is:
+
+```
+uncompressed_len(varint) | compressed_data
+```
+
+- The `block_len` field in the block header reflects the **compressed** size (including the varint prefix).
+- The `checksum` is computed on the **uncompressed** payload, so integrity is verified after decompression.
+- If the compressed output is not smaller than the original, the encoder falls back to `comp_type = 0x00` (None).
+
+### 2.6 Decode Paths
+
+- **Zero-copy** (`decode_next()` → `CrousValue<'a>`): Borrows from the input slice. Rejects compressed blocks with a descriptive error.
+- **Owned** (`decode_next_owned()` → `Value`): Works transparently with both compressed and uncompressed blocks. Decompresses into an internal buffer when needed.
 
 ## 3. Wire Types
 
@@ -149,6 +172,18 @@ Every block includes an 8-byte XXH64 hash of its uncompressed payload (seed=0, l
 
 **Why XXH64**: ~30 GB/s throughput, excellent collision resistance for non-cryptographic integrity checks. Adds < 0.1% overhead to typical workloads.
 
+#### 5.1.1 Alternative checksum algorithms (feature flags)
+
+| Algorithm | Feature flag   | Performance | Notes |
+|-----------|---------------|-------------|-------|
+| XXH64     | *(default)*   | ~30 GB/s    | Default, best-tested |
+| XXH3-64   | `xxh3`        | ~50 GB/s    | Newer, SIMD-optimized |
+| CRC32     | `compat-crc32`| ~10 GB/s    | Legacy compatibility |
+
+The `ChecksumAlgo` enum provides a unified API for switching at runtime.
+The wire format always stores an 8-byte checksum field; CRC32 values are
+zero-extended to 8 bytes for backward compatibility.
+
 ### 5.2 File Trailer
 
 The trailer block contains an XXH64 hash of all preceding bytes (header + all blocks). This detects file-level truncation or corruption.
@@ -186,14 +221,63 @@ Decoders MUST be able to skip unknown wire types:
 
 ## 8. String Dictionary (Per-Block)
 
-Within a data block, repeated strings can be stored in a dictionary table at the start of the block. Subsequent occurrences reference the dictionary by index.
+Within a data block, repeated strings can be stored in a dictionary table. Subsequent occurrences reference the dictionary by index using the Reference wire type.
 
-**Algorithm:**
-1. First occurrence: encode string normally (LenDelimited + string data).
-2. Track strings in a hash map (string → u32 index).
-3. Subsequent occurrences: encode as Reference wire type with dictionary index.
+**Algorithm (Encoder):**
+1. When `enable_dedup()` is called, the encoder maintains a per-block `HashMap<String, u32>`.
+2. First occurrence: encode string normally (LenDelimited + string data), record in the map with the next sequential index.
+3. Subsequent occurrences: encode as Reference wire type (0x0A) with the dictionary index.
+4. On `flush_block()`, if the dictionary is non-empty, emit a **StringDict block** (type 0x04) *before* the data block.
+5. The dictionary is cleared between blocks.
 
-**Delta + prefix compression** (planned): Sorted dictionary entries share common prefixes. Store prefix length + suffix for compact representation.
+### 8.1 StringDict Block Format
+
+The StringDict block (type `0x04`) is emitted immediately before its corresponding data block. It uses standard block framing:
+
+```
+block_type(0x04) | block_len(varint) | comp_type(0x00) | checksum(8B) | payload
+```
+
+**Payload layout:**
+
+```
+entry_count(varint) | entry₀ | entry₁ | ... | entryₙ₋₁
+```
+
+Each entry uses **prefix-delta compression** (entries are sorted lexicographically):
+
+```
+original_index(varint) | prefix_len(varint) | suffix_len(varint) | suffix_bytes
+```
+
+- `original_index`: The insertion-order index matching Reference wire type IDs.
+- `prefix_len`: Number of bytes shared with the previous entry (0 for the first).
+- `suffix_len`: Length of the non-shared suffix.
+- `suffix_bytes`: The raw suffix bytes.
+
+### 8.2 Decoder Handling
+
+When the decoder encounters a StringDict block:
+1. Verify the block checksum.
+2. Parse the prefix-delta entries, reconstructing full strings.
+3. Populate the per-block string table in insertion order using `original_index`.
+4. Proceed to the next block (which should be a Data block).
+5. During data block decoding, Reference wire types resolve from the pre-populated table.
+
+The StringDict block is consumed transparently — callers of `decode_next()` / `decode_next_owned()` never see it.
+
+### 8.3 Prefix-Delta Compression
+
+Entries in the StringDict block are sorted lexicographically before encoding. Each entry stores only the suffix that differs from the previous entry:
+
+| Previous      | Current                  | prefix_len | suffix    |
+|---------------|--------------------------|------------|-----------|
+| (none)        | `config_cache_host`      | 0          | `config_cache_host` |
+| `config_cache_host` | `config_cache_port` | 13         | `port`    |
+| `config_cache_port` | `config_database_host` | 7       | `database_host` |
+| `config_database_host` | `config_database_port` | 16   | `port`    |
+
+This reduces dictionary overhead for datasets with structured/hierarchical key names.
 
 ## 9. Reference/Dedup
 
@@ -226,3 +310,65 @@ Key points:
 - UTF-8 validation on all strings.
 - Per-block checksums prevent processing corrupted data.
 - Decompression output is bounded.
+- `skip_value_at()` enforces Limits (nesting + item count) during skip.
+
+## 12. Feature Flags
+
+All optimizations are gated behind Cargo feature flags to keep the default
+binary small and compilation fast.
+
+### 12.1 crous-core features
+
+| Flag          | Dependencies  | Description |
+|---------------|---------------|-------------|
+| `xxh3`        | —             | Use XXH3-64 for checksums (faster SIMD path) |
+| `compat-crc32`| `crc32fast`   | CRC32 checksum support for legacy interop |
+| `fast-alloc`  | `bumpalo`     | Per-block bump allocator via `BumpDecoder` |
+
+### 12.2 crous-io features
+
+| Flag   | Dependencies | Description |
+|--------|-------------|-------------|
+| `mmap` | `memmap2`   | Memory-mapped zero-copy file reader (`MmapReader`) |
+
+### 12.3 crous-compression features
+
+| Flag     | Dependencies | Description |
+|----------|-------------|-------------|
+| `lz4`    | `lz4_flex`  | LZ4 compression support |
+| `zstd`   | `zstd`      | Zstandard compression |
+| `snappy` | `snap`      | Snappy compression |
+
+### 12.4 crous-simd features
+
+| Flag         | Dependencies | Description |
+|--------------|-------------|-------------|
+| `simd-varint`| —           | NEON SIMD-accelerated varint boundary pre-scan |
+
+## 13. Text Format
+
+The Crous text format is a deterministic, human-readable notation that maps
+1:1 to the binary format. See `docs/TEXT_FORMAT.abnf` for the normative ABNF
+grammar (RFC 5234).
+
+Key differences from JSON:
+- Object fields terminated by `;` not `,`
+- Binary literals: `b64#<base64>;`
+- Optional type annotations: `42::u32`
+- Comments: `// line` and `/* block */`
+- Signed integers use explicit `+`/`-` prefix
+
+## 14. CLI Reference
+
+The `crous` CLI tool (crous-cli) provides the following commands:
+
+| Command    | Description |
+|------------|-------------|
+| `inspect`  | Show block layout and checksums |
+| `pretty`   | Pretty-print in text notation |
+| `to-json`  | Convert to JSON |
+| `from-json`| Convert JSON to binary |
+| `encode`   | Parse text notation, emit binary |
+| `decode`   | Decode binary to text notation |
+| `validate` | Verify header, checksums, and decode integrity |
+| `bench`    | Quick encode/decode performance test |

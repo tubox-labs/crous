@@ -125,7 +125,10 @@ fn gen_small_objects_n(n: usize) -> Dataset {
                     "email".into(),
                     Value::Str(format!("{}@example.com", rng.next_string(6))),
                 ),
-                ("active".into(), Value::Bool(rng.next_u32().is_multiple_of(2))),
+                (
+                    "active".into(),
+                    Value::Bool(rng.next_u32().is_multiple_of(2)),
+                ),
                 ("score".into(), Value::Float(rng.next_u32() as f64 / 100.0)),
                 ("level".into(), Value::UInt(rng.next_range(100))),
             ])
@@ -196,7 +199,9 @@ fn gen_nested_deep() -> Dataset {
                 _ => Value::Bool(rng.next_u32().is_multiple_of(2)),
             };
         }
-        let children: Vec<Value> = (0..3).map(|_| build_tree(rng, depth + 1, max_depth)).collect();
+        let children: Vec<Value> = (0..3)
+            .map(|_| build_tree(rng, depth + 1, max_depth))
+            .collect();
         Value::Object(vec![
             (format!("d{depth}"), Value::Array(children)),
             ("meta".into(), Value::Str(rng.next_string(8))),
@@ -210,10 +215,7 @@ fn gen_nested_deep() -> Dataset {
     }
 
     let tree = build_tree(&mut rng, 0, 10);
-    let combined = Value::Object(vec![
-        ("tree".into(), tree),
-        ("linear_50".into(), linear),
-    ]);
+    let combined = Value::Object(vec![("tree".into(), tree), ("linear_50".into(), linear)]);
 
     Dataset::new(
         "nested_deep",
@@ -265,12 +267,25 @@ fn gen_mixed_api_events_ci() -> Dataset {
 fn gen_mixed_api_events_n(n: usize) -> Dataset {
     let mut rng = Rng::new(0xC005_0005);
     let event_types = [
-        "push", "pull_request", "issue", "comment", "review", "deployment",
-        "release", "fork", "star", "watch",
+        "push",
+        "pull_request",
+        "issue",
+        "comment",
+        "review",
+        "deployment",
+        "release",
+        "fork",
+        "star",
+        "watch",
     ];
     let repos = [
-        "rust-lang/rust", "tokio-rs/tokio", "serde-rs/serde", "crous-format/crous",
-        "hyperium/hyper", "actix/actix-web", "diesel-rs/diesel",
+        "rust-lang/rust",
+        "tokio-rs/tokio",
+        "serde-rs/serde",
+        "crous-format/crous",
+        "hyperium/hyper",
+        "actix/actix-web",
+        "diesel-rs/diesel",
     ];
 
     let items: Vec<Value> = (0..n)
@@ -312,8 +327,16 @@ fn gen_mixed_api_events_n(n: usize) -> Dataset {
                     ]),
                 ),
                 ("public".into(), Value::Bool(true)),
-                ("created_at".into(), Value::Str(format!("2026-02-{:02}T{:02}:{:02}:{:02}Z", 
-                    1 + rng.next_range(28), rng.next_range(24), rng.next_range(60), rng.next_range(60)))),
+                (
+                    "created_at".into(),
+                    Value::Str(format!(
+                        "2026-02-{:02}T{:02}:{:02}:{:02}Z",
+                        1 + rng.next_range(28),
+                        rng.next_range(24),
+                        rng.next_range(60),
+                        rng.next_range(60)
+                    )),
+                ),
             ])
         })
         .collect();
@@ -341,9 +364,15 @@ fn gen_numeric_heavy_n(n: usize) -> Dataset {
             Value::Object(vec![
                 ("i64_val".into(), Value::Int(rng.next_u64() as i64)),
                 ("u64_val".into(), Value::UInt(rng.next_u64())),
-                ("f64_val".into(), Value::Float(f64::from_bits(rng.next_u64() & 0x7FEFFFFFFFFFFFFF))),
+                (
+                    "f64_val".into(),
+                    Value::Float(f64::from_bits(rng.next_u64() & 0x7FEFFFFFFFFFFFFF)),
+                ),
                 ("small".into(), Value::UInt(rng.next_range(256))),
-                ("negative".into(), Value::Int(-(rng.next_range(100_000) as i64))),
+                (
+                    "negative".into(),
+                    Value::Int(-(rng.next_range(100_000) as i64)),
+                ),
             ])
         })
         .collect();
@@ -363,7 +392,11 @@ mod tests {
         let a = generate_all();
         let b = generate_all();
         for (da, db) in a.iter().zip(b.iter()) {
-            assert_eq!(da.sha256, db.sha256, "Dataset '{}' is non-deterministic", da.name);
+            assert_eq!(
+                da.sha256, db.sha256,
+                "Dataset '{}' is non-deterministic",
+                da.name
+            );
         }
     }
 
@@ -372,7 +405,11 @@ mod tests {
         let a = generate_ci_subset();
         let b = generate_ci_subset();
         for (da, db) in a.iter().zip(b.iter()) {
-            assert_eq!(da.sha256, db.sha256, "CI dataset '{}' is non-deterministic", da.name);
+            assert_eq!(
+                da.sha256, db.sha256,
+                "CI dataset '{}' is non-deterministic",
+                da.name
+            );
         }
     }
 }

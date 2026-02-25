@@ -1,0 +1,14 @@
+[package]
+name = "crous-python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PyO3 Python bindings for the Crous encoder/decoder"
+
+[lib]
+name = "_crous_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+crous-core = { workspace = true }
+pyo3 = { version = "0.28", features = ["extension-module"] }

@@ -114,8 +114,14 @@ fn write_regression_md(
     writeln!(f)?;
 
     // Overall status.
-    let failures = regressions.iter().filter(|r| r.severity == Severity::Failure).count();
-    let warnings = regressions.iter().filter(|r| r.severity == Severity::Warning).count();
+    let failures = regressions
+        .iter()
+        .filter(|r| r.severity == Severity::Failure)
+        .count();
+    let warnings = regressions
+        .iter()
+        .filter(|r| r.severity == Severity::Warning)
+        .count();
 
     if failures > 0 {
         writeln!(f, "## ❌ REGRESSION DETECTED")?;
@@ -227,8 +233,14 @@ fn write_size_comparison(dir: &Path, measurements: &[Measurement]) -> std::io::R
 
     writeln!(f, "# Size Comparison")?;
     writeln!(f)?;
-    writeln!(f, "| Dataset | Crous | Crous+Dedup | JSON | MsgPack | CBOR | Crous/JSON |")?;
-    writeln!(f, "|---------|-------|-------------|------|---------|------|------------|")?;
+    writeln!(
+        f,
+        "| Dataset | Crous | Crous+Dedup | JSON | MsgPack | CBOR | Crous/JSON |"
+    )?;
+    writeln!(
+        f,
+        "|---------|-------|-------------|------|---------|------|------------|"
+    )?;
 
     // Collect encode sizes per dataset.
     let datasets: Vec<&str> = measurements

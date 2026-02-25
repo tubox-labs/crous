@@ -36,9 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Decoder memory tracking**: cumulative allocation tracking with configurable `max_memory` limit
 - **Unknown-field skipping**: `skip_value_at()` for forward-compatible decoding
 - **String deduplication**: encoder `enable_dedup()` emits `Reference` wire types for repeated strings; decoder resolves via zero-copy `str_slices` table
+- **StringDict block format** (type 0x04): per-block string dictionary emitted before data blocks with prefix-delta compression for sorted entries; decoder transparently consumes StringDict blocks and pre-populates reference tables
+- **Prefix-delta compression**: dictionary entries sorted lexicographically; each entry stores `original_index | prefix_len | suffix_len | suffix` for compact storage of structured/hierarchical key names
+- **Owned decode path** (`decode_next_owned()` / `decode_all_owned()`): transparent decompression + dedup resolution for compressed blocks; zero-copy path rejects compressed blocks with a descriptive error
+- **Compression wired into encoder/decoder pipeline**: `flush_block()` compresses payload when configured; `read_next_block()` decompresses transparently; checksum on uncompressed data; fallback to None when compression doesn't help
 - **NEON SIMD byte scanning** (`crous-simd`): vectorized `find_byte()`, `count_byte()`, `find_non_ascii()` using aarch64 NEON intrinsics with scalar fallbacks
 - **Pure Python implementation** (`python/crous/`): full encode/decode with 8 modules, XXH64 hasher, text parser/printer, 54 tests
-- **Cross-language interop**: bidirectional Rust↔Python binary format verified
+- **PyO3 native extension** (`crous-python`): native Python bindings via PyO3 0.28, `encode()`/`decode()` functions + `Encoder`/`CrousDecoder` classes, dedup and compression support, 24 tests
+- **Cross-language interop**: bidirectional Rust↔Python binary format verified (native + pure Python)
 - **Expanded benchmarks**: JSON head-to-head comparison, deep nesting, numeric arrays, size report
 - **3 new fuzz targets**: `fuzz_roundtrip` (structured Value), `fuzz_text` (text parser), `fuzz_varint` (varint codec)
 - **CI improvements**: MSRV testing (1.85.0), multi-OS matrix, Python test job, cross-language interop job, all 4 fuzz targets

@@ -5,5 +5,11 @@ edition.workspace = true
 license.workspace = true
 description = "Optional SIMD-accelerated routines for Crous encoding/decoding"
 
+[features]
+default = []
+# SIMD-accelerated varint decode using pre-scan of continuation bits
+# Idea: https://github.com/as-com/varint-simd
+simd-varint = []
+
 [dependencies]
 crous-core = { workspace = true }

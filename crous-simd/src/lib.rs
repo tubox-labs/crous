@@ -7,19 +7,20 @@
 //! On x86_64 it uses SSE2/AVX2 when available.
 //! All functions have scalar fallbacks for unsupported platforms.
 //!
+//! # Feature flags
+//! - `simd-varint` — enable SIMD-accelerated varint boundary pre-scan.
+//!   Idea: https://github.com/as-com/varint-simd
+//!
 //! # Provided routines
 //! - `batch_decode_varints` — decode multiple LEB128 varints sequentially
+//! - `batch_decode_varints_simd` — SIMD pre-scan variant (feature `simd-varint`)
 //! - `find_byte` — locate first occurrence of a byte (SIMD-accelerated)
 //! - `count_byte` — count occurrences of a byte (SIMD-accelerated)
 //! - `find_non_ascii` — locate first non-ASCII byte (for fast UTF-8 pre-scan)
 
-/// Batch-decode multiple varints from a contiguous buffer.
+/// Batch-decode multiple varints from a contiguous buffer (scalar path).
 ///
 /// Returns a vector of `(value, bytes_consumed)` pairs.
-/// Uses the scalar `crous_core::varint::decode_varint` internally;
-/// the SIMD advantage is in pre-scanning continuation bits to predict
-/// varint boundaries, but for now we rely on the compiler's autovectorization
-/// and focus SIMD effort on byte-scanning operations.
 pub fn batch_decode_varints(data: &[u8], count: usize) -> Vec<(u64, usize)> {
     let mut results = Vec::with_capacity(count);
     let mut offset = 0;
@@ -36,6 +37,136 @@ pub fn batch_decode_varints(data: &[u8], count: usize) -> Vec<(u64, usize)> {
         }
     }
     results
+}
+
+/// Total bytes consumed by a batch decode.
+pub fn batch_decode_total_consumed(data: &[u8], count: usize) -> usize {
+    let mut offset = 0;
+    for _ in 0..count {
+        if offset >= data.len() {
+            break;
+        }
+        match crous_core::varint::decode_varint(data, offset) {
+            Ok((_val, consumed)) => offset += consumed,
+            Err(_) => break,
+        }
+    }
+    offset
+}
+
+// ── SIMD varint boundary pre-scan (feature = "simd-varint") ──────────
+//
+// The key insight from varint-simd: we can use SIMD to scan for the
+// continuation bit (0x80) across 16 bytes at once to quickly find
+// varint termination bytes, then extract values with scalar code.
+// Citation: https://github.com/as-com/varint-simd
+
+#[cfg(all(feature = "simd-varint", target_arch = "aarch64"))]
+mod simd_varint_neon {
+    use std::arch::aarch64::*;
+
+    /// SIMD pre-scan: find the offset of the first byte without the high bit
+    /// set (i.e., a varint terminator) starting from `offset`.
+    ///
+    /// Returns the length of the varint starting at `offset` (1..=10), or
+    /// None if no terminator found in the next 16 bytes (malformed).
+    ///
+    /// # Safety
+    /// NEON always available on aarch64.
+    #[inline]
+    pub(crate) unsafe fn varint_len_neon(data: &[u8], offset: usize) -> Option<usize> {
+        let remaining = data.len() - offset;
+        if remaining == 0 {
+            return None;
+        }
+
+        if remaining >= 16 {
+            let ptr = data.as_ptr().add(offset);
+            let chunk = unsafe { vld1q_u8(ptr) };
+            let high_bits = unsafe { vshrq_n_u8::<7>(chunk) }; // isolate bit 7
+            // We want the first lane where bit 7 is 0 (terminator)
+            let zero_vec = unsafe { vdupq_n_u8(0) };
+            let is_terminator = unsafe { vceqq_u8(high_bits, zero_vec) };
+            let max_val = unsafe { vmaxvq_u8(is_terminator) };
+            if max_val != 0 {
+                let mut mask = [0u8; 16];
+                unsafe { vst1q_u8(mask.as_mut_ptr(), is_terminator) };
+                for (j, &m) in mask.iter().enumerate() {
+                    if m != 0 {
+                        let len = j + 1;
+                        if len <= 10 {
+                            return Some(len);
+                        } else {
+                            return None; // overflow
+                        }
+                    }
+                }
+            }
+            None
+        } else {
+            // Scalar fallback for tail
+            scalar_varint_len(data, offset)
+        }
+    }
+
+    fn scalar_varint_len(data: &[u8], offset: usize) -> Option<usize> {
+        for i in 0..10.min(data.len() - offset) {
+            if data[offset + i] & 0x80 == 0 {
+                return Some(i + 1);
+            }
+        }
+        None
+    }
+}
+
+/// Batch-decode varints using SIMD pre-scan to determine boundaries first.
+///
+/// This amortizes branch misprediction by scanning continuation bits in bulk.
+/// Falls back to `batch_decode_varints` when the `simd-varint` feature is disabled
+/// or the platform is unsupported.
+///
+/// Citation: SIMD varint idea — https://github.com/as-com/varint-simd
+pub fn batch_decode_varints_simd(data: &[u8], count: usize) -> Vec<(u64, usize)> {
+    #[cfg(all(feature = "simd-varint", target_arch = "aarch64"))]
+    {
+        let mut results = Vec::with_capacity(count);
+        let mut offset = 0;
+        for _ in 0..count {
+            if offset >= data.len() {
+                break;
+            }
+            // Use SIMD to find varint length, then decode scalar
+            let vlen = unsafe { simd_varint_neon::varint_len_neon(data, offset) };
+            match vlen {
+                Some(len) => {
+                    // Fast scalar decode knowing the exact length
+                    match crous_core::varint::decode_varint(data, offset) {
+                        Ok((val, consumed)) => {
+                            debug_assert_eq!(consumed, len);
+                            results.push((val, consumed));
+                            offset += consumed;
+                        }
+                        Err(_) => break,
+                    }
+                }
+                None => {
+                    // Fallback to scalar
+                    match crous_core::varint::decode_varint(data, offset) {
+                        Ok((val, consumed)) => {
+                            results.push((val, consumed));
+                            offset += consumed;
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+        }
+        results
+    }
+    #[cfg(not(all(feature = "simd-varint", target_arch = "aarch64")))]
+    {
+        batch_decode_varints(data, count)
+    }
 }
 
 // ── SIMD byte scanning (aarch64 NEON) ────────────────────────────────
@@ -226,6 +357,22 @@ mod tests {
         assert_eq!(results[2].0, 127);
         assert_eq!(results[3].0, 128);
         assert_eq!(results[4].0, 300);
+    }
+
+    #[test]
+    fn batch_decode_simd_matches_scalar() {
+        let mut data = Vec::new();
+        let values = [0u64, 1, 42, 127, 128, 255, 300, 16384, u64::MAX];
+        for v in &values {
+            crous_core::varint::encode_varint_vec(*v, &mut data);
+        }
+        let scalar = batch_decode_varints(&data, values.len());
+        let simd = batch_decode_varints_simd(&data, values.len());
+        assert_eq!(scalar.len(), simd.len());
+        for (s, d) in scalar.iter().zip(simd.iter()) {
+            assert_eq!(s.0, d.0, "value mismatch");
+            assert_eq!(s.1, d.1, "consumed mismatch");
+        }
     }
 
     #[test]

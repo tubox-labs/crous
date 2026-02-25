@@ -207,6 +207,17 @@ impl Encoder {
 
     /// Flush the current block buffer into a framed block and append to output.
     /// Returns the number of bytes in the flushed block.
+    ///
+    /// When `dedup_strings` is enabled and the per-block string dictionary is
+    /// non-empty, a `StringDict` block is emitted *before* the data block.
+    /// The dictionary entries are sorted and stored using prefix-delta
+    /// compression for compactness.
+    ///
+    /// When `compression` is set to something other than `None`, the block
+    /// payload is compressed before framing. The checksum is always computed
+    /// on the **uncompressed** payload so the decoder can verify integrity
+    /// after decompression. The block_len field reflects the **compressed**
+    /// size written to the wire.
     pub fn flush_block(&mut self) -> Result<usize> {
         if self.block_buf.is_empty() {
             return Ok(0);
@@ -214,25 +225,130 @@ impl Encoder {
 
         self.ensure_header();
 
-        let payload = &self.block_buf;
-        let checksum = compute_xxh64(payload);
+        let mut total_size = 0;
+
+        // --- Emit StringDict block before the data block ---
+        if self.dedup_strings && !self.string_dict.is_empty() {
+            let dict_payload = self.encode_string_dict_payload();
+            let dict_checksum = compute_xxh64(&dict_payload);
+
+            self.output.push(BlockType::StringDict as u8);
+            encode_varint_vec(dict_payload.len() as u64, &mut self.output);
+            self.output.push(CompressionType::None as u8);
+            self.output.extend_from_slice(&dict_checksum.to_le_bytes());
+            self.output.extend_from_slice(&dict_payload);
+
+            total_size += 1 + 1 + 1 + 8 + dict_payload.len();
+        }
+
+        // --- Emit the data block ---
+
+        // Checksum is always over the uncompressed payload.
+        let checksum = compute_xxh64(&self.block_buf);
+
+        // Compress if requested. The on-wire payload may differ from block_buf.
+        let (wire_payload, wire_comp) = if self.compression != CompressionType::None {
+            match self.compress_payload(&self.block_buf) {
+                Some(compressed) if compressed.len() < self.block_buf.len() => {
+                    // Store uncompressed length as a varint prefix so the decoder
+                    // can pre-allocate the decompression buffer.
+                    let mut framed = Vec::with_capacity(10 + compressed.len());
+                    encode_varint_vec(self.block_buf.len() as u64, &mut framed);
+                    framed.extend_from_slice(&compressed);
+                    (framed, self.compression)
+                }
+                _ => {
+                    // Compression didn't help — store uncompressed.
+                    (self.block_buf.clone(), CompressionType::None)
+                }
+            }
+        } else {
+            (self.block_buf.clone(), CompressionType::None)
+        };
 
         // Block header:
         //   block_type (1B) | block_len (varint) | comp_type (1B) | checksum (8B) | payload
         let block_type = BlockType::Data as u8;
-        let comp_type = self.compression as u8;
-        let payload_len = payload.len();
 
         self.output.push(block_type);
-        encode_varint_vec(payload_len as u64, &mut self.output);
-        self.output.push(comp_type);
+        encode_varint_vec(wire_payload.len() as u64, &mut self.output);
+        self.output.push(wire_comp as u8);
         self.output.extend_from_slice(&checksum.to_le_bytes());
-        self.output.extend_from_slice(payload);
+        self.output.extend_from_slice(&wire_payload);
 
-        let block_size = 1 + 1 + 8 + payload_len; // approximate (varint may be >1 byte)
+        total_size += 1 + 1 + 8 + wire_payload.len();
         self.block_buf.clear();
         self.string_dict.clear(); // Reset per-block dictionary.
-        Ok(block_size)
+        Ok(total_size)
+    }
+
+    /// Encode the per-block string dictionary as a prefix-delta-compressed
+    /// payload for a `StringDict` block.
+    ///
+    /// Layout:
+    ///   `entry_count(varint)` | entries...
+    ///
+    /// Each entry (prefix-delta encoded):
+    ///   `original_index(varint)` | `prefix_len(varint)` | `suffix_len(varint)` | `suffix_bytes`
+    ///
+    /// Entries are sorted lexicographically for prefix sharing. The
+    /// `original_index` preserves the insertion order so the decoder can
+    /// rebuild the reference table with the correct indices.
+    fn encode_string_dict_payload(&self) -> Vec<u8> {
+        // Collect entries and sort by string for prefix-delta compression.
+        let mut entries: Vec<(&str, u32)> = self
+            .string_dict
+            .iter()
+            .map(|(s, &idx)| (s.as_str(), idx))
+            .collect();
+        entries.sort_by(|a, b| a.0.cmp(b.0));
+
+        let mut payload = Vec::with_capacity(entries.len() * 16);
+        encode_varint_vec(entries.len() as u64, &mut payload);
+
+        let mut prev = "";
+        for (s, original_idx) in &entries {
+            // Compute shared prefix length with previous entry.
+            let prefix_len = s
+                .as_bytes()
+                .iter()
+                .zip(prev.as_bytes().iter())
+                .take_while(|(a, b)| a == b)
+                .count();
+            let suffix = &s.as_bytes()[prefix_len..];
+
+            encode_varint_vec(*original_idx as u64, &mut payload);
+            encode_varint_vec(prefix_len as u64, &mut payload);
+            encode_varint_vec(suffix.len() as u64, &mut payload);
+            payload.extend_from_slice(suffix);
+
+            prev = s;
+        }
+        payload
+    }
+
+    /// Compress the payload using the configured compression algorithm.
+    /// Returns `None` if the compression feature is not available.
+    #[allow(unused_variables)]
+    fn compress_payload(&self, data: &[u8]) -> Option<Vec<u8>> {
+        match self.compression {
+            CompressionType::None => None,
+            #[cfg(feature = "zstd")]
+            CompressionType::Zstd => zstd::encode_all(std::io::Cursor::new(data), 3).ok(),
+            #[cfg(not(feature = "zstd"))]
+            CompressionType::Zstd => None,
+            #[cfg(feature = "snappy")]
+            CompressionType::Snappy => {
+                let mut enc = snap::raw::Encoder::new();
+                enc.compress_vec(data).ok()
+            }
+            #[cfg(not(feature = "snappy"))]
+            CompressionType::Snappy => None,
+            #[cfg(feature = "lz4")]
+            CompressionType::Lz4 => Some(lz4_flex::compress_prepend_size(data)),
+            #[cfg(not(feature = "lz4"))]
+            CompressionType::Lz4 => None,
+        }
     }
 
     /// Finish encoding: flush remaining data and return the complete binary output.

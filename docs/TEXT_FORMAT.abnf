@@ -1,0 +1,126 @@
+; ===========================================================================
+; Crous Text Format — ABNF Grammar (RFC 5234)
+;
+; This is the normative grammar for the Crous human-readable textual
+; notation. It maps 1:1 to the Crous binary wire format.
+;
+; Reference implementation: crous-core/src/text.rs
+; Specification: docs/SPEC.md
+; ===========================================================================
+
+; ---------------------------------------------------------------------------
+; Top-level
+; ---------------------------------------------------------------------------
+
+document      = WSP-COMMENT value WSP-COMMENT
+
+; ---------------------------------------------------------------------------
+; Values
+; ---------------------------------------------------------------------------
+
+value         = null / boolean / float / integer / string / bytes
+              / array / object
+
+null          = %s"null"
+
+boolean       = %s"true" / %s"false"
+
+; Integers: unsigned (bare) or signed (+/- prefix).
+; Optional type annotation.
+integer       = [sign] 1*DIGIT [type-ann]
+
+; Floats require a decimal point. Optional exponent and type annotation.
+float         = [sign] 1*DIGIT "." 1*DIGIT [exponent] [type-ann]
+
+exponent      = ("e" / "E") [sign] 1*DIGIT
+
+sign          = "+" / "-"
+
+; ---------------------------------------------------------------------------
+; Strings & Bytes
+; ---------------------------------------------------------------------------
+
+; Double-quoted UTF-8 string. Supports standard escape sequences.
+string        = DQUOTE *string-char DQUOTE [type-ann]
+
+string-char   = unescaped / escape-seq
+
+unescaped     = %x20-21 / %x23-5B / %x5D-10FFFF
+                ; Any printable char except " and \
+
+escape-seq    = "\" escape-code
+
+escape-code   = %x22        ; "   quotation mark
+              / %x5C        ; \   reverse solidus
+              / %x2F        ; /   solidus
+              / %x62        ; b   backspace
+              / %x66        ; f   form feed
+              / %x6E        ; n   line feed
+              / %x72        ; r   carriage return
+              / %x74        ; t   tab
+              / %x75 4HEXDIG ; uXXXX  Unicode code point
+
+; Raw binary data encoded as base64.
+bytes         = %s"b64#" base64-data ";"
+
+base64-data   = *( ALPHA / DIGIT / "+" / "/" / "=" )
+
+; ---------------------------------------------------------------------------
+; Compound types
+; ---------------------------------------------------------------------------
+
+; Arrays use [ ] with comma separators. Trailing comma allowed.
+array         = "[" WSP-COMMENT
+                [ value *( WSP-COMMENT "," WSP-COMMENT value ) [","] ]
+                WSP-COMMENT "]"
+
+; Objects use { } with semicolon terminators after each field.
+object        = "{" WSP-COMMENT
+                *field
+                WSP-COMMENT "}"
+
+field         = key WSP-COMMENT ":" WSP-COMMENT value WSP-COMMENT ";"
+                WSP-COMMENT
+
+key           = identifier / string
+
+identifier    = ( ALPHA / "_" ) *( ALPHA / DIGIT / "_" / "-" )
+
+; ---------------------------------------------------------------------------
+; Type annotations
+; ---------------------------------------------------------------------------
+
+; Optional type annotation, e.g. 42::u32, "hello"::str
+type-ann      = "::" type-name
+
+type-name     = identifier
+
+; ---------------------------------------------------------------------------
+; Whitespace & Comments
+; ---------------------------------------------------------------------------
+
+WSP-COMMENT   = *( WSP / LF / CR / comment )
+
+comment       = line-comment / block-comment
+
+line-comment  = "//" *( %x20-7E / %x09 ) LF
+
+block-comment = "/*" *( block-comment-char ) "*/"
+
+; Any character except the closing */
+block-comment-char = %x09 / %x0A / %x0D / %x20-29 / %x2B-7E
+                   / "*" %x00-2E / "*" %x30-7E
+                   ; (i.e., any char, but not "*" followed by "/")
+
+; ---------------------------------------------------------------------------
+; Core rules (from RFC 5234 Appendix B)
+; ---------------------------------------------------------------------------
+
+ALPHA         = %x41-5A / %x61-7A    ; A-Z / a-z
+DIGIT         = %x30-39              ; 0-9
+HEXDIG        = DIGIT / "A" / "B" / "C" / "D" / "E" / "F"
+              / "a" / "b" / "c" / "d" / "e" / "f"
+DQUOTE        = %x22                 ; "
+WSP           = %x20 / %x09          ; SP / HTAB
+LF            = %x0A                 ; Line feed
+CR            = %x0D                 ; Carriage return

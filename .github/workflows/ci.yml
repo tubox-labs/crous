@@ -138,6 +138,9 @@ jobs:
       - name: Fuzz varint (30s)
         run: cargo +nightly fuzz run fuzz_varint -- -max_total_time=30 -max_len=4096
 
+      - name: Fuzz block (30s)
+        run: cargo +nightly fuzz run fuzz_block -- -max_total_time=30 -max_len=4096
+
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest

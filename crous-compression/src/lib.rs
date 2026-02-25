@@ -2,9 +2,14 @@
 //!
 //! Pluggable compression adapters for Crous blocks.
 //! Provides a trait for custom compressors and optional built-in
-//! support for zstd and snappy (behind feature flags).
+//! support for zstd, lz4, and snappy (behind feature flags).
+//!
+//! ## Compression libraries
+//! - Zstd: https://facebook.github.io/zstd/
+//! - LZ4: https://github.com/lz4/lz4 (pure-Rust via lz4_flex)
+//! - Snappy: https://github.com/google/snappy
 
-#[cfg(any(feature = "zstd", feature = "snappy"))]
+#[cfg(any(feature = "zstd", feature = "snappy", feature = "lz4"))]
 use crous_core::error::CrousError;
 use crous_core::error::Result;
 use crous_core::wire::CompressionType;
@@ -130,6 +135,93 @@ impl Compressor for SnappyCompressor {
     }
 }
 
+/// LZ4 block compressor (requires `lz4` feature).
+/// Uses lz4_flex for pure-Rust LZ4 compression.
+/// Citation: https://github.com/PSeitz/lz4_flex
+#[cfg(feature = "lz4")]
+pub struct Lz4Compressor;
+
+#[cfg(feature = "lz4")]
+impl Compressor for Lz4Compressor {
+    fn compression_type(&self) -> CompressionType {
+        CompressionType::Lz4
+    }
+
+    fn compress(&self, input: &[u8]) -> Result<Vec<u8>> {
+        Ok(lz4_flex::compress_prepend_size(input))
+    }
+
+    fn decompress(&self, input: &[u8], max_output: usize) -> Result<Vec<u8>> {
+        // lz4_flex stores the uncompressed size as a 4-byte LE prefix
+        if input.len() < 4 {
+            return Err(CrousError::DecompressionError(
+                "lz4: input too short for size prefix".into(),
+            ));
+        }
+        let expected_size = u32::from_le_bytes([input[0], input[1], input[2], input[3]]) as usize;
+        if expected_size > max_output {
+            return Err(CrousError::MemoryLimitExceeded(expected_size, max_output));
+        }
+        lz4_flex::decompress_size_prepended(input)
+            .map_err(|e| CrousError::DecompressionError(format!("lz4 decompress: {e}")))
+    }
+
+    fn name(&self) -> &'static str {
+        "lz4"
+    }
+}
+
+/// Adaptive compression selector.
+///
+/// Samples the first N bytes of input, compresses with each available
+/// compressor, and picks the one with the best ratio (if it meets
+/// the threshold). Falls back to `NoCompression` if nothing helps.
+pub struct AdaptiveSelector {
+    /// Minimum compression ratio (compressed/original) to justify compression.
+    /// E.g., 0.9 means compression must achieve at least 10% reduction.
+    pub ratio_threshold: f64,
+    /// Maximum sample size (bytes) for the trial compression.
+    pub sample_size: usize,
+}
+
+impl Default for AdaptiveSelector {
+    fn default() -> Self {
+        Self {
+            ratio_threshold: 0.90,
+            sample_size: 64 * 1024, // 64 KiB
+        }
+    }
+}
+
+impl AdaptiveSelector {
+    /// Given a payload, select the best compressor from the registry.
+    /// Returns the compression type to use.
+    pub fn select(&self, data: &[u8], registry: &CompressorRegistry) -> CompressionType {
+        let sample = if data.len() > self.sample_size {
+            &data[..self.sample_size]
+        } else {
+            data
+        };
+
+        let mut best_type = CompressionType::None;
+        let mut best_ratio = 1.0f64;
+
+        for comp in &registry.compressors {
+            if comp.compression_type() == CompressionType::None {
+                continue;
+            }
+            if let Ok(compressed) = comp.compress(sample) {
+                let ratio = compressed.len() as f64 / sample.len() as f64;
+                if ratio < best_ratio && ratio < self.ratio_threshold {
+                    best_ratio = ratio;
+                    best_type = comp.compression_type();
+                }
+            }
+        }
+        best_type
+    }
+}
+
 /// Registry of available compressors.
 pub struct CompressorRegistry {
     compressors: Vec<Box<dyn Compressor>>,
@@ -149,6 +241,8 @@ impl CompressorRegistry {
         let mut reg = Self::new();
         #[cfg(feature = "zstd")]
         reg.register(Box::new(ZstdCompressor::default()));
+        #[cfg(feature = "lz4")]
+        reg.register(Box::new(Lz4Compressor));
         #[cfg(feature = "snappy")]
         reg.register(Box::new(SnappyCompressor));
         reg

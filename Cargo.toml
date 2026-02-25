@@ -7,6 +7,7 @@ members = [
     "crous-compression",
     "crous-ffi",
     "crous-simd",
+    "crous-python",
     "bench",
 ]
 resolver = "3"
@@ -28,7 +29,10 @@ crous-io = { path = "crous-io", version = "0.1.0" }
 crous-ffi = { path = "crous-ffi", version = "0.1.0" }
 crous-simd = { path = "crous-simd", version = "0.1.0" }
 thiserror = "2"
-xxhash-rust = { version = "0.8", features = ["xxh64"] }
+# XXH3 rationale: https://xxhash.com/ — XXH3 offers ~2x throughput over XXH64
+xxhash-rust = { version = "0.8", features = ["xxh64", "xxh3"] }
+# CRC32 compat: https://docs.rs/crc32fast — backward-compatible checksum option
+crc32fast = "1.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
@@ -36,3 +40,9 @@ clap = { version = "4", features = ["derive"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1"
 base64 = "0.22"
+# Zero-copy shared buffers: https://docs.rs/bytes
+bytes = "1.10"
+# Memory-mapped I/O: https://docs.rs/memmap2
+memmap2 = "0.9"
+# Bump allocator for per-block decode scratch: https://docs.rs/bumpalo
+bumpalo = "3.17"

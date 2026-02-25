@@ -63,6 +63,34 @@ pub trait Crous: Sized {
 
     /// The human-readable type name for diagnostics.
     fn type_name() -> &'static str;
+
+    /// Encode this value directly to Crous binary bytes.
+    ///
+    /// Convenience method that creates an `Encoder`, encodes the value,
+    /// and returns the finished byte vector.
+    fn to_crous_bytes(&self) -> Result<Vec<u8>> {
+        let val = self.to_crous_value();
+        let mut enc = crate::encoder::Encoder::new();
+        enc.encode_value(&val)?;
+        enc.finish()
+    }
+
+    /// Decode from Crous binary bytes using default limits.
+    fn from_crous_bytes(data: &[u8]) -> Result<Self> {
+        let mut dec = crate::decoder::Decoder::new(data);
+        let val = dec.decode_next()?.to_owned_value();
+        Self::from_crous_value(&val)
+    }
+
+    /// Decode from Crous binary bytes with custom limits.
+    ///
+    /// This enforces all `Limits` during binary decode: nesting depth,
+    /// memory, block size, string length, and item count.
+    fn from_crous_bytes_with_limits(data: &[u8], limits: crate::limits::Limits) -> Result<Self> {
+        let mut dec = crate::decoder::Decoder::with_limits(data, limits);
+        let val = dec.decode_next()?.to_owned_value();
+        Self::from_crous_value(&val)
+    }
 }
 
 // --- Blanket impls for common types ---

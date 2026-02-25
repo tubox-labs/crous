@@ -28,18 +28,33 @@ pub fn run_dataset(dataset: &Dataset, iterations: usize) -> Vec<Measurement> {
     // ── JSON (serde_json) ────────────────────────────────────────────
     let json_val: serde_json::Value = (&dataset.value).into();
     let json_bytes = serde_json::to_vec(&json_val).unwrap();
-    results.push(bench_json_encode(dataset, iterations, &json_val, &json_bytes));
+    results.push(bench_json_encode(
+        dataset,
+        iterations,
+        &json_val,
+        &json_bytes,
+    ));
     results.push(bench_json_decode(dataset, iterations, &json_bytes));
 
     // ── MessagePack (rmp-serde) ──────────────────────────────────────
     let msgpack_bytes = rmp_serde::to_vec(&json_val).unwrap();
-    results.push(bench_msgpack_encode(dataset, iterations, &json_val, &msgpack_bytes));
+    results.push(bench_msgpack_encode(
+        dataset,
+        iterations,
+        &json_val,
+        &msgpack_bytes,
+    ));
     results.push(bench_msgpack_decode(dataset, iterations, &msgpack_bytes));
 
     // ── CBOR (ciborium) ──────────────────────────────────────────────
     let mut cbor_bytes = Vec::new();
     ciborium::into_writer(&json_val, &mut cbor_bytes).unwrap();
-    results.push(bench_cbor_encode(dataset, iterations, &json_val, &cbor_bytes));
+    results.push(bench_cbor_encode(
+        dataset,
+        iterations,
+        &json_val,
+        &cbor_bytes,
+    ));
     results.push(bench_cbor_decode(dataset, iterations, &cbor_bytes));
 
     results

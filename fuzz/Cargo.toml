@@ -39,3 +39,10 @@ path = "fuzz_targets/fuzz_varint.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_block"
+path = "fuzz_targets/fuzz_block.rs"
+test = false
+doc = false
+bench = false

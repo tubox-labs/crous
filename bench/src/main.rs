@@ -20,9 +20,7 @@ use chrono::Utc;
 use clap::Parser;
 
 use crous_bench::datasets;
-use crous_bench::metrics::{
-    self, BenchReport, RegressionThresholds, Severity, SystemInfo,
-};
+use crous_bench::metrics::{self, BenchReport, RegressionThresholds, Severity, SystemInfo};
 use crous_bench::report;
 use crous_bench::runner;
 
@@ -79,7 +77,10 @@ fn main() {
 
     // Collect system info.
     let system = SystemInfo::collect();
-    eprintln!("  System:     {} {} ({} cores)", system.os, system.arch, system.cpu_cores);
+    eprintln!(
+        "  System:     {} {} ({} cores)",
+        system.os, system.arch, system.cpu_cores
+    );
     eprintln!("  CPU:        {}", system.cpu_model);
     eprintln!("  Rust:       {}", system.rust_version);
     eprintln!();
@@ -103,10 +104,12 @@ fn main() {
         eprintln!("▸ Benchmarking: {} ({iterations} iterations)…", ds.name);
         let results = runner::run_dataset(ds, iterations);
         for m in &results {
-            let mbps = m.throughput_mbps()
+            let mbps = m
+                .throughput_mbps()
                 .map(|v| format!("{v:.1} MB/s"))
                 .unwrap_or_default();
-            let size = m.serialized_size
+            let size = m
+                .serialized_size
                 .map(|s| format!("{s}B"))
                 .unwrap_or_default();
             eprintln!(
@@ -147,13 +150,21 @@ fn main() {
     };
 
     // Print regression summary.
-    let failures = regressions.iter().filter(|r| r.severity == Severity::Failure).count();
-    let warnings = regressions.iter().filter(|r| r.severity == Severity::Warning).count();
+    let failures = regressions
+        .iter()
+        .filter(|r| r.severity == Severity::Failure)
+        .count();
+    let warnings = regressions
+        .iter()
+        .filter(|r| r.severity == Severity::Warning)
+        .count();
 
     if failures > 0 {
         eprintln!();
         eprintln!("╔══════════════════════════════════════════════════════════╗");
-        eprintln!("║  ❌ REGRESSION DETECTED: {failures} failure(s), {warnings} warning(s)       ║");
+        eprintln!(
+            "║  ❌ REGRESSION DETECTED: {failures} failure(s), {warnings} warning(s)       ║"
+        );
         eprintln!("╚══════════════════════════════════════════════════════════╝");
         for r in &regressions {
             if r.severity == Severity::Failure {
