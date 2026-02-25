@@ -1,0 +1,17 @@
+[package]
+name = "crous-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI tool for inspecting, pretty-printing, and converting Crous files"
+
+[[bin]]
+name = "crous"
+path = "src/main.rs"
+
+[dependencies]
+crous-core = { workspace = true }
+crous-compression = { workspace = true }
+clap = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

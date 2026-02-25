@@ -1,0 +1,41 @@
+[package]
+name = "crous-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+crous-core = { path = "../crous-core" }
+arbitrary = { version = "1", features = ["derive"] }
+
+[[bin]]
+name = "fuzz_decode"
+path = "fuzz_targets/fuzz_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_roundtrip"
+path = "fuzz_targets/fuzz_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_text"
+path = "fuzz_targets/fuzz_text.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_varint"
+path = "fuzz_targets/fuzz_varint.rs"
+test = false
+doc = false
+bench = false

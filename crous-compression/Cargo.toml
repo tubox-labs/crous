@@ -1,0 +1,23 @@
+[package]
+name = "crous-compression"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pluggable compression adapters (zstd, snappy) for Crous blocks"
+
+[dependencies]
+crous-core = { workspace = true }
+thiserror = { workspace = true }
+
+[features]
+default = []
+zstd = ["dep:zstd"]
+snappy = ["dep:snap"]
+
+[dependencies.zstd]
+version = "0.13"
+optional = true
+
+[dependencies.snap]
+version = "1"
+optional = true

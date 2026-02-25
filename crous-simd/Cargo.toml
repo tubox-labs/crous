@@ -1,0 +1,9 @@
+[package]
+name = "crous-simd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Optional SIMD-accelerated routines for Crous encoding/decoding"
+
+[dependencies]
+crous-core = { workspace = true }
