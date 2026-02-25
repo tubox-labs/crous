@@ -3,7 +3,15 @@ name = "crous-derive"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
 description = "Proc-macro derive for Crous schema-bound types with stable field IDs"
+documentation = "https://docs.rs/crous-derive"
+keywords = ["serialization", "derive", "proc-macro", "codec", "crous"]
+categories = ["encoding", "development-tools::procedural-macro-helpers"]
+rust-version.workspace = true
 
 [lib]
 proc-macro = true

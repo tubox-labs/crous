@@ -3,7 +3,13 @@ name = "crous-python"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
 description = "PyO3 Python bindings for the Crous encoder/decoder"
+publish = false
+rust-version.workspace = true
 
 [lib]
 name = "_crous_native"

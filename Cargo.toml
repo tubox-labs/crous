@@ -19,7 +19,12 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["Pawan Kumar"]
 repository = "https://github.com/axiomchronicles/crous"
+homepage = "https://github.com/axiomchronicles/crous"
+documentation = "https://docs.rs/crous-core"
 description = "A compact, canonical binary serializer and human-readable alternative to JSON"
+readme = "README.md"
+keywords = ["serialization", "binary", "encoding", "codec", "format"]
+categories = ["encoding", "data-structures", "parser-implementations"]
 rust-version = "1.85.0"
 
 [workspace.dependencies]

@@ -3,7 +3,15 @@ name = "crous-simd"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
 description = "Optional SIMD-accelerated routines for Crous encoding/decoding"
+documentation = "https://docs.rs/crous-simd"
+keywords = ["simd", "performance", "encoding", "varint", "crous"]
+categories = ["encoding", "data-structures"]
+rust-version.workspace = true
 
 [features]
 default = []

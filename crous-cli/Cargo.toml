@@ -3,7 +3,15 @@ name = "crous-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
 description = "CLI tool for inspecting, pretty-printing, and converting Crous files"
+documentation = "https://docs.rs/crous-cli"
+keywords = ["serialization", "binary", "cli", "inspect", "crous"]
+categories = ["encoding", "command-line-utilities"]
+rust-version.workspace = true
 
 [[bin]]
 name = "crous"
