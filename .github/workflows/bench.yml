@@ -1,0 +1,208 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Benchmark mode"
+        required: false
+        default: "ci"
+        type: choice
+        options:
+          - ci
+          - full
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust-benchmark:
+    name: Rust Benchmark (${{ github.event.inputs.mode || 'ci' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version tag
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build benchmark binary
+        run: cargo build -p crous-bench --release
+
+      # Restore baseline from cache (keyed by branch)
+      - name: Restore baseline
+        id: baseline
+        uses: actions/cache/restore@v4
+        with:
+          path: bench/results/baseline.json
+          key: bench-baseline-${{ github.base_ref || github.ref_name }}
+
+      - name: Run benchmark (with baseline)
+        if: steps.baseline.outputs.cache-hit == 'true'
+        run: |
+          cargo run -p crous-bench --release -- \
+            --mode ${{ github.event.inputs.mode || 'ci' }} \
+            --baseline bench/results/baseline.json \
+            --output bench/results \
+            --version "${{ github.sha }}"
+
+      - name: Run benchmark (no baseline)
+        if: steps.baseline.outputs.cache-hit != 'true'
+        run: |
+          cargo run -p crous-bench --release -- \
+            --mode ${{ github.event.inputs.mode || 'ci' }} \
+            --save-baseline \
+            --output bench/results \
+            --version "${{ github.sha }}"
+
+      # Save baseline on main branch pushes
+      - name: Save baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          cargo run -p crous-bench --release -- \
+            --mode ${{ github.event.inputs.mode || 'ci' }} \
+            --save-baseline \
+            --output bench/results \
+            --version "${{ github.sha }}"
+
+      - name: Cache baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: bench/results/baseline.json
+          key: bench-baseline-main-${{ github.sha }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-bench-results
+          path: bench/results/
+          retention-days: 30
+
+      - name: Post regression report to PR
+        if: github.event_name == 'pull_request' && always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: rust-benchmark
+          path: bench/results/regression_report.md
+
+  python-benchmark:
+    name: Python Benchmark (${{ github.event.inputs.mode || 'ci' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install msgpack
+
+      # Restore Python baseline
+      - name: Restore Python baseline
+        id: py-baseline
+        uses: actions/cache/restore@v4
+        with:
+          path: bench/results/python/python_baseline.json
+          key: bench-py-baseline-${{ github.base_ref || github.ref_name }}
+
+      - name: Run Python benchmark (with baseline)
+        if: steps.py-baseline.outputs.cache-hit == 'true'
+        run: |
+          python3 bench/python/bench_crous.py \
+            --mode ${{ github.event.inputs.mode || 'ci' }} \
+            --baseline bench/results/python/python_baseline.json \
+            --output bench/results/python \
+            --version "${{ github.sha }}"
+
+      - name: Run Python benchmark (no baseline)
+        if: steps.py-baseline.outputs.cache-hit != 'true'
+        run: |
+          python3 bench/python/bench_crous.py \
+            --mode ${{ github.event.inputs.mode || 'ci' }} \
+            --save-baseline \
+            --output bench/results/python \
+            --version "${{ github.sha }}"
+
+      # Save Python baseline on main
+      - name: Save Python baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          python3 bench/python/bench_crous.py \
+            --mode ${{ github.event.inputs.mode || 'ci' }} \
+            --save-baseline \
+            --output bench/results/python \
+            --version "${{ github.sha }}"
+
+      - name: Cache Python baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: bench/results/python/python_baseline.json
+          key: bench-py-baseline-main-${{ github.sha }}
+
+      - name: Upload Python results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-bench-results
+          path: bench/results/python/
+          retention-days: 30
+
+      - name: Post Python report to PR
+        if: github.event_name == 'pull_request' && always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: python-benchmark
+          path: bench/results/python/python_report.md
+
+  cross-language-comparison:
+    name: Cross-Language Size Comparison
+    needs: [rust-benchmark, python-benchmark]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: rust-bench-results
+          path: rust-results/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-bench-results
+          path: python-results/
+
+      - name: Generate comparison
+        run: |
+          echo "## Cross-Language Benchmark Comparison" > comparison.md
+          echo "" >> comparison.md
+          echo "### Rust Results" >> comparison.md
+          if [ -f rust-results/size_comparison.md ]; then
+            cat rust-results/size_comparison.md >> comparison.md
+          fi
+          echo "" >> comparison.md
+          echo "### Python Results" >> comparison.md
+          if [ -f python-results/python_report.md ]; then
+            tail -n +2 python-results/python_report.md >> comparison.md
+          fi
+          cat comparison.md
+
+      - name: Upload comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-language-comparison
+          path: comparison.md
+          retention-days: 30

@@ -1,0 +1,26 @@
+[package]
+name = "crous-bench"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Regression benchmark harness for the Crous serialization ecosystem"
+
+[dependencies]
+crous-core = { path = "../crous-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rmp-serde = "1"               # MessagePack
+ciborium = "0.2"               # CBOR
+sha2 = "0.10"
+clap = { version = "4", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+csv = "1"
+tabled = "0.18"
+
+# Tracking allocator (optional, Linux/macOS)
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+tikv-jemallocator = { version = "0.6", optional = true }
+
+[features]
+default = []
+jemalloc = ["tikv-jemallocator"]
