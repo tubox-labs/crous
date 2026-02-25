@@ -356,6 +356,7 @@ impl Encoder {
     /// The output includes: file header + data blocks + file trailer checksum.
     pub fn finish(mut self) -> Result<Vec<u8>> {
         self.flush_block()?;
+        self.ensure_header();
 
         // Write file trailer: XXH64 checksum over everything written so far.
         let overall_checksum = compute_xxh64(&self.output);

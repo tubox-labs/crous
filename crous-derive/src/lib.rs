@@ -194,7 +194,6 @@ pub fn derive_crous_schema(input: TokenStream) -> TokenStream {
     let mut field_entries = Vec::new();
     for field in fields {
         let fname = field.ident.as_ref().unwrap().to_string();
-        let _ftype = format!("{}", quote!(#(field.ty)));
         let mut fid: u64 = 0;
 
         for attr in &field.attrs {

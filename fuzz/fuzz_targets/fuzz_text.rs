@@ -15,7 +15,7 @@ fuzz_target!(|data: &[u8]| {
         // Must not panic on any input.
         if let Ok(value) = crous_core::text::parse(text) {
             // If parsing succeeds, pretty-printing must also succeed.
-            let printed = crous_core::text::pretty_print(&value);
+            let printed = crous_core::text::pretty_print(&value, 2);
             // Re-parsing the pretty-printed output should succeed.
             let reparsed = crous_core::text::parse(&printed)
                 .expect("pretty_print output should be parseable");

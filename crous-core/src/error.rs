@@ -62,6 +62,9 @@ pub enum CrousError {
 
     #[error("Invalid base64 data: {0}")]
     InvalidBase64(String),
+
+    #[error("Invalid data: {0}")]
+    InvalidData(String),
 }
 
 /// Convenience Result alias.

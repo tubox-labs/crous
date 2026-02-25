@@ -116,8 +116,8 @@ impl<'a> BlockReader<'a> {
         let checksum = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
         pos += 8;
 
-        if pos + block_len > data.len() {
-            return Err(CrousError::UnexpectedEof(pos + block_len));
+        if pos.checked_add(block_len).is_none_or(|end| end > data.len()) {
+            return Err(CrousError::UnexpectedEof(pos));
         }
         let payload = &data[pos..pos + block_len];
         pos += block_len;

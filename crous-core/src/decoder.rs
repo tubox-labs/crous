@@ -377,6 +377,13 @@ impl<'a> Decoder<'a> {
             pos += c1;
             let original_idx = original_idx as usize;
 
+            // Validate that original_idx is within bounds (cannot exceed entry count).
+            if original_idx >= count {
+                return Err(CrousError::InvalidData(format!(
+                    "StringDict entry has original_idx {original_idx} >= count {count}"
+                )));
+            }
+
             let (prefix_len, c2) = decode_varint(payload, pos)?;
             pos += c2;
             let prefix_len = prefix_len as usize;
@@ -385,14 +392,17 @@ impl<'a> Decoder<'a> {
             pos += c3;
             let suffix_len = suffix_len as usize;
 
-            if pos + suffix_len > payload.len() {
-                return Err(CrousError::UnexpectedEof(pos + suffix_len));
+            if pos.checked_add(suffix_len).is_none_or(|end| end > payload.len()) {
+                return Err(CrousError::UnexpectedEof(pos));
             }
             let suffix = &payload[pos..pos + suffix_len];
             pos += suffix_len;
 
             // Reconstruct the full string from prefix of previous + suffix.
             let prefix_end = prefix_len.min(prev.len());
+            // Ensure prefix_end falls on a valid char boundary.
+            // If corrupted, snap down to the nearest valid boundary.
+            let prefix_end = prev.floor_char_boundary(prefix_end);
             let mut full = String::with_capacity(prefix_end + suffix_len);
             full.push_str(&prev[..prefix_end]);
             full.push_str(std::str::from_utf8(suffix).map_err(|_| CrousError::InvalidUtf8(pos))?);

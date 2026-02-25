@@ -66,18 +66,43 @@ fuzz_target!(|input: FuzzValue| {
 
     // Decode
     let mut dec = crous_core::Decoder::new(&bytes);
-    let decoded = match dec.decode_next() {
-        Ok(v) => v.to_owned(),
+    let decoded = match dec.decode_next_owned() {
+        Ok(v) => v,
         Err(e) => {
             panic!("Roundtrip decode failed: {e}");
         }
     };
 
-    // Compare (skip NaN floats since NaN != NaN)
-    if matches!(&value, crous_core::Value::Float(f) if f.is_nan()) {
-        // NaN roundtrip: just check it decoded to a float
-        assert!(matches!(decoded, crous_core::Value::Float(f) if f.is_nan()));
-    } else {
-        assert_eq!(value, decoded, "Roundtrip mismatch");
-    }
+    // NaN-aware comparison (NaN != NaN in IEEE 754, but we want roundtrip equality)
+    assert!(nan_aware_eq(&value, &decoded), "Roundtrip mismatch:\n  left:  {value:?}\n  right: {decoded:?}");
 });
+
+/// Recursively compare two Values, treating NaN == NaN.
+fn nan_aware_eq(a: &crous_core::Value, b: &crous_core::Value) -> bool {
+    use crous_core::Value;
+    match (a, b) {
+        (Value::Null, Value::Null) => true,
+        (Value::Bool(x), Value::Bool(y)) => x == y,
+        (Value::UInt(x), Value::UInt(y)) => x == y,
+        (Value::Int(x), Value::Int(y)) => x == y,
+        (Value::Float(x), Value::Float(y)) => {
+            if x.is_nan() && y.is_nan() {
+                x.to_bits() == y.to_bits()
+            } else {
+                x.to_bits() == y.to_bits()
+            }
+        }
+        (Value::Str(x), Value::Str(y)) => x == y,
+        (Value::Bytes(x), Value::Bytes(y)) => x == y,
+        (Value::Array(xa), Value::Array(ya)) => {
+            xa.len() == ya.len() && xa.iter().zip(ya.iter()).all(|(x, y)| nan_aware_eq(x, y))
+        }
+        (Value::Object(xo), Value::Object(yo)) => {
+            xo.len() == yo.len()
+                && xo.iter().zip(yo.iter()).all(|((xk, xv), (yk, yv))| {
+                    xk == yk && nan_aware_eq(xv, yv)
+                })
+        }
+        _ => false,
+    }
+}
