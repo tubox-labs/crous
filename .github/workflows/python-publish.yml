@@ -228,7 +228,7 @@ jobs:
           data = cn.encode(obj)
           assert isinstance(data, bytes) and len(data) > 0
           decoded = cn.decode(data)
-          assert decoded == obj, f'roundtrip failed: {decoded}'
+          assert decoded == obj, 'roundtrip failed: ' + repr(decoded)
 
           # Encoder class
           enc = cn.Encoder()
@@ -241,7 +241,8 @@ jobs:
           vals = dec.decode_all()
           assert vals[0] == obj
 
-          print(f'All smoke tests passed (Python {__import__(\"sys\").version})')
+          import sys
+          print('All smoke tests passed (Python ' + sys.version + ')')
           "
 
   # -----------------------------------------------------------------------
