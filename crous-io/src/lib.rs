@@ -2,8 +2,13 @@
 //!
 //! Async IO adapters for Crous, including:
 //! - Framed stream reader/writer for Tokio
-//! - Memory-mapped file reader
+//! - Memory-mapped file reader (feature `mmap`)
 //! - Streaming block reader
+//! - Bytes-based shared buffer API
+//!
+//! ## Feature flags
+//! - `mmap` — enables `MmapReader` for zero-copy file access.
+//!   Citation: https://docs.rs/memmap2 — memmap best practices
 
 use crous_core::block::BlockWriter;
 use crous_core::error::{CrousError, Result};
@@ -166,6 +171,103 @@ pub fn write_values_to_bytes(values: &[crous_core::Value]) -> Result<Vec<u8>> {
         encoder.encode_value(v)?;
     }
     encoder.finish()
+}
+
+// ---------------------------------------------------------------------------
+// Bytes-based shared buffer API
+// ---------------------------------------------------------------------------
+
+/// Read a complete Crous file from a `bytes::Bytes` buffer.
+///
+/// The `Bytes` reference-counted buffer avoids copies when sharing
+/// between threads or network layers.
+/// Citation: https://docs.rs/bytes
+pub fn read_from_shared(data: bytes::Bytes) -> Result<Vec<crous_core::Value>> {
+    let mut decoder = crous_core::Decoder::new(&data);
+    decoder.decode_all_owned()
+}
+
+/// Write values into a `bytes::Bytes` shared buffer.
+pub fn write_to_shared(values: &[crous_core::Value]) -> Result<bytes::Bytes> {
+    let vec = write_values_to_bytes(values)?;
+    Ok(bytes::Bytes::from(vec))
+}
+
+// ---------------------------------------------------------------------------
+// Memory-mapped file reader (feature = "mmap")
+// ---------------------------------------------------------------------------
+
+/// Zero-copy memory-mapped file reader for Crous files.
+///
+/// Maps a file into the process address space and provides direct
+/// zero-copy access to the underlying bytes. The `Decoder` can
+/// borrow `CrousValue<'a>` directly from the mapped memory.
+///
+/// # Safety considerations
+/// The file must not be modified while the mapping is live.
+/// `MmapReader` uses a read-only mapping which will cause SIGBUS
+/// if the file is truncated. For untrusted files, prefer `read_file_bytes`.
+///
+/// Citation: memmap best practices — https://docs.rs/memmap2
+#[cfg(feature = "mmap")]
+pub struct MmapReader {
+    _mmap: memmap2::Mmap,
+}
+
+#[cfg(feature = "mmap")]
+impl MmapReader {
+    /// Open a Crous file for zero-copy reading.
+    ///
+    /// ```rust,ignore
+    /// let reader = MmapReader::open("data.crous")?;
+    /// let values = reader.decode_all()?;
+    /// ```
+    pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
+        let file = std::fs::File::open(path)?;
+        // SAFETY: We require the file not to be modified while mapped.
+        let mmap = unsafe { memmap2::Mmap::map(&file)? };
+        Ok(Self { _mmap: mmap })
+    }
+
+    /// Get a reference to the mapped bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self._mmap
+    }
+
+    /// Get the file size.
+    pub fn len(&self) -> usize {
+        self._mmap.len()
+    }
+
+    /// Check if the mapping is empty.
+    pub fn is_empty(&self) -> bool {
+        self._mmap.is_empty()
+    }
+
+    /// Create a decoder over the mapped memory.
+    ///
+    /// The returned decoder borrows from the mapping, enabling zero-copy
+    /// `CrousValue<'_>` decoding with no additional allocation for strings/bytes.
+    pub fn decoder(&self) -> crous_core::Decoder<'_> {
+        crous_core::Decoder::new(&self._mmap)
+    }
+
+    /// Create a decoder with custom limits.
+    pub fn decoder_with_limits(&self, limits: crous_core::Limits) -> crous_core::Decoder<'_> {
+        crous_core::Decoder::with_limits(&self._mmap, limits)
+    }
+
+    /// Convenience: decode all values as owned Values.
+    pub fn decode_all(&self) -> Result<Vec<crous_core::Value>> {
+        let mut dec = self.decoder();
+        dec.decode_all_owned()
+    }
+
+    /// Convenience: decode all values as zero-copy CrousValues.
+    pub fn decode_all_borrowed(&self) -> Result<Vec<crous_core::CrousValue<'_>>> {
+        let mut dec = self.decoder();
+        dec.decode_all()
+    }
 }
 
 #[cfg(test)]

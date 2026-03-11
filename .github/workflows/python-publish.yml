@@ -1,0 +1,264 @@
+# ---------------------------------------------------------------------------
+# CI workflow: build crous-native wheels for all platforms and publish to PyPI
+#
+# Triggers:
+#   - Push tag matching "python-v*" (e.g. python-v1.1.0) → full build + PyPI publish
+#   - Manual workflow_dispatch → build only (publish skipped unless release flag set)
+#   - Pull requests touching crous-python/ → build only (smoke test)
+#
+# Matrix:
+#   - Linux   x86_64 + aarch64  (manylinux, musllinux)
+#   - macOS   x86_64 + ARM64
+#   - Windows x86_64
+#   - CPython 3.9 – 3.14
+# ---------------------------------------------------------------------------
+
+name: Python Publish
+
+on:
+  push:
+    tags:
+      - "python-v*"
+  pull_request:
+    paths:
+      - "crous-python/**"
+      - "crous-core/**"
+      - ".github/workflows/python-publish.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to PyPI after build"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Maturin picks up Cargo.toml from manifest-path in pyproject.toml,
+  # but the workspace root must be discoverable.
+  CARGO_WORKSPACE_DIR: ${{ github.workspace }}
+
+jobs:
+  # -----------------------------------------------------------------------
+  # Linux wheels (x86_64 + aarch64, glibc + musl)
+  # -----------------------------------------------------------------------
+  linux:
+    name: Linux (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --find-interpreter
+          sccache: "true"
+          manylinux: auto
+          working-directory: crous-python
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.target }}
+          path: crous-python/dist
+
+  # -----------------------------------------------------------------------
+  # macOS wheels (x86_64 + ARM64, universal2)
+  # -----------------------------------------------------------------------
+  macos:
+    name: macOS (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            runner: macos-13          # Intel runner
+          - target: aarch64-apple-darwin
+            runner: macos-14          # Apple Silicon runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --find-interpreter
+          sccache: "true"
+          working-directory: crous-python
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-${{ matrix.target }}
+          path: crous-python/dist
+
+  # -----------------------------------------------------------------------
+  # Windows wheels (x86_64)
+  # -----------------------------------------------------------------------
+  windows:
+    name: Windows (x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64-pc-windows-msvc
+          args: --release --out dist --find-interpreter
+          sccache: "true"
+          working-directory: crous-python
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-x86_64
+          path: crous-python/dist
+
+  # -----------------------------------------------------------------------
+  # Source distribution (sdist) — fallback for unsupported platforms
+  # -----------------------------------------------------------------------
+  sdist:
+    name: Source Distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+          working-directory: crous-python
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: crous-python/dist
+
+  # -----------------------------------------------------------------------
+  # Smoke test — install built wheel and run a quick sanity check
+  # -----------------------------------------------------------------------
+  test:
+    name: Test (${{ matrix.os }} / Python ${{ matrix.python }})
+    needs: [linux, macos, windows]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.10"
+            artifact: wheels-linux-x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            python: "3.12"
+            artifact: wheels-linux-x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            python: "3.13"
+            artifact: wheels-linux-x86_64-unknown-linux-gnu
+          - os: macos-14
+            python: "3.12"
+            artifact: wheels-macos-aarch64-apple-darwin
+          - os: windows-latest
+            python: "3.12"
+            artifact: wheels-windows-x86_64
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+
+      - name: Install wheel
+        run: pip install --find-links dist --no-index --force-reinstall crous-native
+
+      - name: Smoke test
+        run: |
+          python -c "
+          import _crous_native as cn
+
+          # Encode / decode roundtrip
+          obj = {'name': 'Alice', 'age': 30, 'active': True}
+          data = cn.encode(obj)
+          assert isinstance(data, bytes) and len(data) > 0
+          decoded = cn.decode(data)
+          assert decoded == obj, f'roundtrip failed: {decoded}'
+
+          # Encoder class
+          enc = cn.Encoder()
+          enc.encode([1, 2, 3])
+          buf = enc.finish()
+          assert cn.decode(buf) == [1, 2, 3]
+
+          # Decoder class
+          dec = cn.CrousDecoder(data)
+          vals = dec.decode_all()
+          assert vals[0] == obj
+
+          print(f'All smoke tests passed (Python {__import__(\"sys\").version})')
+          "
+
+  # -----------------------------------------------------------------------
+  # Publish to PyPI (only on tag push or manual trigger with publish=true)
+  # -----------------------------------------------------------------------
+  publish:
+    name: Publish to PyPI
+    needs: [linux, macos, windows, sdist, test]
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/python-v'))
+      || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
+    environment:
+      name: pypi
+      url: https://pypi.org/project/crous-native/
+    permissions:
+      id-token: write   # for trusted publishing via OIDC
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+
+      - name: List distribution files
+        run: ls -lhR dist/
+
+      - name: Publish to PyPI
+        uses: PyO3/maturin-action@v1
+        with:
+          command: upload
+          args: --non-interactive --skip-existing dist/*

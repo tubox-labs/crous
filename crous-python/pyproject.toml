@@ -1,0 +1,41 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "crous-native"
+version = "1.1.0"
+description = "Native Rust-backed encoder/decoder for the Crous binary format (fast extension)"
+readme = "../README.md"
+requires-python = ">=3.9"
+license = "MIT OR Apache-2.0"
+authors = [
+    { name = "Pawan Kumar" }
+]
+keywords = ["serialization", "binary", "encoder", "decoder", "crous"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/axiomchronicles/crous"
+Repository = "https://github.com/axiomchronicles/crous"
+Documentation = "https://github.com/axiomchronicles/crous/blob/main/docs/PYTHON_API.md"
+"Bug Tracker" = "https://github.com/axiomchronicles/crous/issues"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+manifest-path = "Cargo.toml"

@@ -36,9 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Decoder memory tracking**: cumulative allocation tracking with configurable `max_memory` limit
 - **Unknown-field skipping**: `skip_value_at()` for forward-compatible decoding
 - **String deduplication**: encoder `enable_dedup()` emits `Reference` wire types for repeated strings; decoder resolves via zero-copy `str_slices` table
+- **StringDict block format** (type 0x04): per-block string dictionary emitted before data blocks with prefix-delta compression for sorted entries; decoder transparently consumes StringDict blocks and pre-populates reference tables
+- **Prefix-delta compression**: dictionary entries sorted lexicographically; each entry stores `original_index | prefix_len | suffix_len | suffix` for compact storage of structured/hierarchical key names
+- **Owned decode path** (`decode_next_owned()` / `decode_all_owned()`): transparent decompression + dedup resolution for compressed blocks; zero-copy path rejects compressed blocks with a descriptive error
+- **Compression wired into encoder/decoder pipeline**: `flush_block()` compresses payload when configured; `read_next_block()` decompresses transparently; checksum on uncompressed data; fallback to None when compression doesn't help
 - **NEON SIMD byte scanning** (`crous-simd`): vectorized `find_byte()`, `count_byte()`, `find_non_ascii()` using aarch64 NEON intrinsics with scalar fallbacks
 - **Pure Python implementation** (`python/crous/`): full encode/decode with 8 modules, XXH64 hasher, text parser/printer, 54 tests
-- **Cross-language interop**: bidirectional Rust↔Python binary format verified
+- **PyO3 native extension** (`crous-python`): native Python bindings via PyO3 0.28, `encode()`/`decode()` functions + `Encoder`/`CrousDecoder` classes, dedup and compression support, 24 tests
+- **Cross-language interop**: bidirectional Rust↔Python binary format verified (native + pure Python)
 - **Expanded benchmarks**: JSON head-to-head comparison, deep nesting, numeric arrays, size report
 - **3 new fuzz targets**: `fuzz_roundtrip` (structured Value), `fuzz_text` (text parser), `fuzz_varint` (varint codec)
 - **CI improvements**: MSRV testing (1.85.0), multi-OS matrix, Python test job, cross-language interop job, all 4 fuzz targets
@@ -48,7 +53,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python XXH64: corrected `PRIME64_4` constant (`0x85EBCA77C2B2AE63`)
 - `crous-compression`: conditional `#[cfg]` gate on `CrousError` import to eliminate unused-import warning
 
-## [0.1.0] - TBD
+## [1.1.0] - 2026-02-25
+
+### Added
+- **Full primitive type support**: `Crous` trait implementations for all Rust integer types (`u8`, `u16`, `u32`, `u64`, `u128`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, `isize`), `f32`, `Box<str>`, `Box<T>`, `()`, tuples up to 6 elements
+- **`CrousBytes` newtype**: dedicated type for raw binary blob encoding (`Value::Bytes`), distinct from `Vec<u8>` which encodes as `Array`
+- **Map support**: `HashMap<String, T>` and `BTreeMap<String, T>` → `Value::Object`
+- **Cross-type decode compatibility**: signed integer types accept `Value::UInt` when the value fits
+- 42 new tests for trait implementations (29 unit + 13 derive integration)
+- 6 production bugs found and fixed via fuzzing (encoder empty finish, block overflow, text Int(0) roundtrip, inf/NaN handling, StringDict OOM, char boundary panic)
+- 9 fuzz targets (4 new: string_dict, compress_corrupt, limits, dedup)
+- Miri validation: 73 core tests verified zero undefined behavior
+- PyO3 `build.rs` for plain `cargo build` compatibility
+
+### Fixed
+- `Encoder::finish()` without prior encode now produces valid file with magic header
+- `BlockReader::parse` integer overflow on malicious `block_len`
+- Text `Int(0)` roundtrip: now pretty-prints as `"-0"` to avoid reparsing as `UInt(0)`
+- Text parser handles `inf`, `-inf`, `NaN` float literals
+- StringDict `original_idx` unbounded → OOM on 9-byte malicious input (now validated)
+- StringDict `prefix_len` not char-boundary-safe → panic on corrupted data (now uses `floor_char_boundary`)
+
+## [0.1.0] - 2026-02-24
 
 Initial release.
 
@@ -56,19 +82,15 @@ Initial release.
 
 ## Release Checklist
 
-- [ ] Update version in all `Cargo.toml` files
-- [ ] Update this CHANGELOG
+- [x] Update version in all `Cargo.toml` files
+- [x] Update this CHANGELOG
 - [ ] Run full test suite: `cargo test --workspace --all-features`
 - [ ] Run clippy: `cargo clippy --workspace --all-features -- -D warnings`
 - [ ] Run Python tests: `cd python && python3 -m pytest tests/ -v`
 - [ ] Run benchmarks: `cargo bench -p crous-core`
-- [ ] Run all fuzz targets (30s each):
-  - `cargo +nightly fuzz run fuzz_decode -- -max_total_time=30`
-  - `cargo +nightly fuzz run fuzz_roundtrip -- -max_total_time=30`
-  - `cargo +nightly fuzz run fuzz_text -- -max_total_time=30`
-  - `cargo +nightly fuzz run fuzz_varint -- -max_total_time=30`
+- [ ] Run all fuzz targets (30s each)
 - [ ] Run `cargo audit`
 - [ ] Verify cross-language interop (Rust↔Python)
 - [ ] Review any new `unsafe` code
-- [ ] Tag release: `git tag v0.1.0`
+- [ ] Tag release: `git tag v1.1.0`
 - [ ] Publish: `cargo publish -p crous-core && cargo publish -p crous-derive && ...`

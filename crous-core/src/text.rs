@@ -182,7 +182,16 @@ impl<'a> Parser<'a> {
             Some('t') if self.remaining().starts_with("true") => self.parse_true(),
             Some('f') if self.remaining().starts_with("false") => self.parse_false(),
             Some('n') if self.remaining().starts_with("null") => self.parse_null(),
-            Some(ch) if ch == '-' || ch == '+' || ch.is_ascii_digit() => self.parse_number(),
+            Some('i') if self.remaining().starts_with("inf") => self.parse_inf(false),
+            Some('N') if self.remaining().starts_with("NaN") => self.parse_nan(),
+            Some(ch) if ch == '-' || ch == '+' || ch.is_ascii_digit() => {
+                // Check for "-inf"
+                if ch == '-' && self.remaining().starts_with("-inf") {
+                    self.parse_inf(true)
+                } else {
+                    self.parse_number()
+                }
+            }
             Some(ch) => Err(self.error(format!("unexpected character: '{ch}'"))),
         }
     }
@@ -193,6 +202,32 @@ impl<'a> Parser<'a> {
         }
         self.skip_type_annotation();
         Ok(Value::Null)
+    }
+
+    fn parse_inf(&mut self, negative: bool) -> Result<Value> {
+        if negative {
+            // skip "-inf"
+            for _ in 0..4 {
+                self.advance();
+            }
+            self.skip_type_annotation();
+            Ok(Value::Float(f64::NEG_INFINITY))
+        } else {
+            // skip "inf"
+            for _ in 0..3 {
+                self.advance();
+            }
+            self.skip_type_annotation();
+            Ok(Value::Float(f64::INFINITY))
+        }
+    }
+
+    fn parse_nan(&mut self) -> Result<Value> {
+        for _ in 0..3 {
+            self.advance();
+        }
+        self.skip_type_annotation();
+        Ok(Value::Float(f64::NAN))
     }
 
     fn parse_true(&mut self) -> Result<Value> {
@@ -435,14 +470,32 @@ fn write_value(out: &mut String, value: &Value, indent_size: usize, depth: usize
         Value::Null => out.push_str("null"),
         Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
         Value::UInt(n) => out.push_str(&n.to_string()),
-        Value::Int(n) => out.push_str(&n.to_string()),
-        Value::Float(f) => {
-            // Ensure float always has a decimal point for deterministic output.
-            let s = format!("{f}");
-            if s.contains('.') || s.contains('e') || s.contains('E') {
-                out.push_str(&s);
+        Value::Int(n) => {
+            // Int(0) pretty-prints as "0" which on reparse becomes UInt(0).
+            // Emit a negative-zero form to preserve the Int type for roundtrip.
+            if *n == 0 {
+                out.push_str("-0");
             } else {
-                out.push_str(&format!("{f}.0"));
+                out.push_str(&n.to_string());
+            }
+        }
+        Value::Float(f) => {
+            if f.is_nan() {
+                out.push_str("NaN");
+            } else if f.is_infinite() {
+                if f.is_sign_negative() {
+                    out.push_str("-inf");
+                } else {
+                    out.push_str("inf");
+                }
+            } else {
+                // Ensure float always has a decimal point for deterministic output.
+                let s = format!("{f}");
+                if s.contains('.') || s.contains('e') || s.contains('E') {
+                    out.push_str(&s);
+                } else {
+                    out.push_str(&format!("{f}.0"));
+                }
             }
         }
         Value::Str(s) => {

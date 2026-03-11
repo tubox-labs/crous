@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "crous"
-version = "0.1.0"
+version = "1.1.0"
 description = "Pure-Python encoder/decoder for the Crous binary serialization format"
 readme = "README.md"
 license = {text = "MIT OR Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
-    {name = "Crous Contributors"}
+    {name = "Pawan Kumar"}
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

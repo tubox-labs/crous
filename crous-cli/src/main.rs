@@ -48,6 +48,22 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Validate a .crous file: check header, block checksums, and decode integrity
+    Validate {
+        /// Path to the .crous file
+        file: PathBuf,
+        /// Only validate checksums, skip full decode
+        #[arg(long)]
+        checksums_only: bool,
+    },
+    /// Decode a .crous file to text notation (to stdout or a file)
+    Decode {
+        /// Path to the .crous file
+        file: PathBuf,
+        /// Output path (default: stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
     /// Quick benchmark encoding/decoding of a file
     Bench {
         /// Path to a JSON file to benchmark
@@ -67,6 +83,11 @@ fn main() {
         Commands::ToJson { file, pretty } => cmd_to_json(&file, pretty),
         Commands::FromJson { file, output } => cmd_from_json(&file, output),
         Commands::Encode { file, output } => cmd_encode(&file, output),
+        Commands::Validate {
+            file,
+            checksums_only,
+        } => cmd_validate(&file, checksums_only),
+        Commands::Decode { file, output } => cmd_decode(&file, output),
         Commands::Bench { file, iterations } => cmd_bench(&file, iterations),
     }
 }
@@ -222,6 +243,121 @@ fn cmd_encode(path: &PathBuf, output: Option<PathBuf>) {
         std::process::exit(1);
     });
     println!("Wrote {} bytes to {}", bytes.len(), out_path.display());
+}
+
+fn cmd_validate(path: &PathBuf, checksums_only: bool) {
+    let data = fs::read(path).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {e}", path.display());
+        std::process::exit(1);
+    });
+
+    // 1. Validate header.
+    let header = match crous_core::header::FileHeader::decode(&data) {
+        Ok(h) => {
+            println!("✓ Header: valid (flags=0x{:02x})", h.flags);
+            h
+        }
+        Err(e) => {
+            eprintln!("✗ Header: INVALID — {e}");
+            std::process::exit(1);
+        }
+    };
+    let _ = header;
+
+    // 2. Walk all blocks and verify checksums.
+    let mut offset = crous_core::header::HEADER_SIZE;
+    let mut block_num = 0u32;
+    let mut bad_checksums = 0u32;
+    while offset < data.len() {
+        match crous_core::block::BlockReader::parse(&data, offset) {
+            Ok((block, consumed)) => {
+                if block.verify_checksum() {
+                    println!(
+                        "✓ Block #{block_num}: {:?}, {} bytes",
+                        block.block_type,
+                        block.payload.len()
+                    );
+                } else {
+                    eprintln!(
+                        "✗ Block #{block_num}: CHECKSUM MISMATCH (expected 0x{:016x})",
+                        block.checksum
+                    );
+                    bad_checksums += 1;
+                }
+                offset += consumed;
+                block_num += 1;
+            }
+            Err(e) => {
+                eprintln!("✗ Block #{block_num}: parse error at offset {offset} — {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    if bad_checksums > 0 {
+        eprintln!("\n✗ {bad_checksums}/{block_num} block(s) have checksum errors");
+        std::process::exit(1);
+    }
+    println!("\n✓ All {block_num} block checksums valid");
+
+    // 3. Full decode validation (unless --checksums-only).
+    if !checksums_only {
+        let mut decoder = crous_core::Decoder::new(&data);
+        match decoder.decode_all_owned() {
+            Ok(values) => {
+                println!(
+                    "✓ Decoded {count} value(s) successfully",
+                    count = values.len()
+                );
+                println!("  Memory tracked: {} bytes", decoder.memory_used());
+            }
+            Err(e) => {
+                eprintln!("✗ Decode error: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    println!("\n✓ File is valid: {}", path.display());
+}
+
+fn cmd_decode(path: &PathBuf, output: Option<PathBuf>) {
+    let data = fs::read(path).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {e}", path.display());
+        std::process::exit(1);
+    });
+
+    let mut decoder = crous_core::Decoder::new(&data);
+    let values = match decoder.decode_all_owned() {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Decode error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let mut text_output = String::new();
+    for value in &values {
+        text_output.push_str(&crous_core::text::pretty_print(value, 2));
+        text_output.push('\n');
+    }
+
+    match output {
+        Some(out_path) => {
+            fs::write(&out_path, &text_output).unwrap_or_else(|e| {
+                eprintln!("Error writing {}: {e}", out_path.display());
+                std::process::exit(1);
+            });
+            println!(
+                "Decoded {} value(s) to {}",
+                values.len(),
+                out_path.display()
+            );
+        }
+        None => {
+            print!("{text_output}");
+        }
+    }
 }
 
 fn cmd_bench(path: &PathBuf, iterations: usize) {

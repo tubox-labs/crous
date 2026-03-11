@@ -3,7 +3,13 @@ name = "crous-ffi"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
 description = "C FFI bindings for Crous encoder/decoder"
+publish = false
+rust-version.workspace = true
 
 [lib]
 crate-type = ["cdylib", "staticlib"]

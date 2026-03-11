@@ -3,7 +3,15 @@ name = "crous-compression"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Pluggable compression adapters (zstd, snappy) for Crous blocks"
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
+description = "Pluggable compression adapters (zstd, lz4, snappy) for Crous blocks"
+documentation = "https://docs.rs/crous-compression"
+keywords = ["compression", "zstd", "lz4", "snappy", "crous"]
+categories = ["compression", "encoding"]
+rust-version.workspace = true
 
 [dependencies]
 crous-core = { workspace = true }
@@ -12,10 +20,16 @@ thiserror = { workspace = true }
 [features]
 default = []
 zstd = ["dep:zstd"]
+lz4 = ["dep:lz4_flex"]
 snappy = ["dep:snap"]
 
 [dependencies.zstd]
 version = "0.13"
+optional = true
+
+# Pure-Rust LZ4: https://github.com/PSeitz/lz4_flex
+[dependencies.lz4_flex]
+version = "0.11"
 optional = true
 
 [dependencies.snap]

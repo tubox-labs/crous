@@ -128,8 +128,7 @@ fn bench_decode_small(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(json_bytes.len() as u64));
     group.bench_function("json", |b| {
         b.iter(|| {
-            let _: serde_json::Value =
-                serde_json::from_slice(black_box(&json_bytes)).unwrap();
+            let _: serde_json::Value = serde_json::from_slice(black_box(&json_bytes)).unwrap();
         });
     });
 
@@ -183,8 +182,7 @@ fn bench_decode_large(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(json_bytes.len() as u64));
     group.bench_function("json", |b| {
         b.iter(|| {
-            let _: serde_json::Value =
-                serde_json::from_slice(black_box(&json_bytes)).unwrap();
+            let _: serde_json::Value = serde_json::from_slice(black_box(&json_bytes)).unwrap();
         });
     });
 
@@ -225,8 +223,7 @@ fn bench_strings(c: &mut Criterion) {
     });
     group.bench_function("json_decode", |b| {
         b.iter(|| {
-            let _: serde_json::Value =
-                serde_json::from_slice(black_box(&json_bytes)).unwrap();
+            let _: serde_json::Value = serde_json::from_slice(black_box(&json_bytes)).unwrap();
         });
     });
 
@@ -293,8 +290,7 @@ fn bench_deep_nesting(c: &mut Criterion) {
     });
     group.bench_function("json_decode", |b| {
         b.iter(|| {
-            let _: serde_json::Value =
-                serde_json::from_slice(black_box(&json_bytes)).unwrap();
+            let _: serde_json::Value = serde_json::from_slice(black_box(&json_bytes)).unwrap();
         });
     });
 
@@ -335,8 +331,7 @@ fn bench_numeric_array(c: &mut Criterion) {
     });
     group.bench_function("json_decode", |b| {
         b.iter(|| {
-            let _: serde_json::Value =
-                serde_json::from_slice(black_box(&json_bytes)).unwrap();
+            let _: serde_json::Value = serde_json::from_slice(black_box(&json_bytes)).unwrap();
         });
     });
 
@@ -386,6 +381,58 @@ fn bench_size_comparison(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_checksum(c: &mut Criterion) {
+    use crous_core::checksum;
+
+    // Benchmark checksum computation across different data sizes.
+    let sizes: &[(&str, usize)] = &[
+        ("64B", 64),
+        ("1KB", 1024),
+        ("64KB", 64 * 1024),
+        ("1MB", 1024 * 1024),
+    ];
+
+    let mut group = c.benchmark_group("checksum");
+
+    for &(label, size) in sizes {
+        let data: Vec<u8> = (0..size).map(|i| (i % 256) as u8).collect();
+
+        group.throughput(Throughput::Bytes(size as u64));
+
+        group.bench_function(format!("xxh64_{label}"), |b| {
+            b.iter(|| checksum::compute_xxh64(black_box(&data)));
+        });
+    }
+
+    group.finish();
+}
+
+fn bench_dedup(c: &mut Criterion) {
+    // Benchmark encoding with and without string dedup.
+    let obj = make_large_nested(); // Contains repeated strings like "admin", "user"
+
+    let mut group = c.benchmark_group("string_dedup");
+
+    group.bench_function("encode_no_dedup", |b| {
+        b.iter(|| {
+            let mut enc = Encoder::new();
+            enc.encode_value(black_box(&obj)).unwrap();
+            let _ = enc.finish().unwrap();
+        });
+    });
+
+    group.bench_function("encode_with_dedup", |b| {
+        b.iter(|| {
+            let mut enc = Encoder::new();
+            enc.enable_dedup();
+            enc.encode_value(black_box(&obj)).unwrap();
+            let _ = enc.finish().unwrap();
+        });
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_encode_small,
@@ -397,5 +444,7 @@ criterion_group!(
     bench_deep_nesting,
     bench_numeric_array,
     bench_size_comparison,
+    bench_checksum,
+    bench_dedup,
 );
 criterion_main!(benches);

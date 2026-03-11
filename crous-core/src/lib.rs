@@ -36,10 +36,14 @@ pub mod varint;
 pub mod wire;
 
 pub use block::{BlockReader, BlockWriter};
+pub use checksum::ChecksumAlgo;
+#[cfg(feature = "fast-alloc")]
+pub use decoder::BumpDecoder;
 pub use decoder::Decoder;
 pub use encoder::Encoder;
 pub use error::{CrousError, Result};
 pub use header::{FLAGS_NONE, FileHeader};
 pub use limits::Limits;
 pub use traits::Crous;
+pub use traits::CrousBytes;
 pub use value::{CrousValue, Value};

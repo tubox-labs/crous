@@ -124,7 +124,7 @@ use crous_derive::{Crous, CrousSchema};
 #[derive(Debug, PartialEq, Crous, CrousSchema)]
 struct Person {
     #[crous(id = 1)] name: String,
-    #[crous(id = 2)] age: u64,
+    #[crous(id = 2)] age: u8,
     #[crous(id = 3)] tags: Vec<String>,
 }
 

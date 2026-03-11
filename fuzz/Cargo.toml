@@ -11,6 +11,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 crous-core = { path = "../crous-core" }
 arbitrary = { version = "1", features = ["derive"] }
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
 
 [[bin]]
 name = "fuzz_decode"
@@ -36,6 +37,41 @@ bench = false
 [[bin]]
 name = "fuzz_varint"
 path = "fuzz_targets/fuzz_varint.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_block"
+path = "fuzz_targets/fuzz_block.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_string_dict"
+path = "fuzz_targets/fuzz_string_dict.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_compress_corrupt"
+path = "fuzz_targets/fuzz_compress_corrupt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_limits"
+path = "fuzz_targets/fuzz_limits.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_dedup"
+path = "fuzz_targets/fuzz_dedup.rs"
 test = false
 doc = false
 bench = false

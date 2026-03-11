@@ -3,12 +3,27 @@ name = "crous-io"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
 description = "Async IO adapters, framed streams, and mmap reader for Crous"
+documentation = "https://docs.rs/crous-io"
+keywords = ["async", "io", "streaming", "tokio", "crous"]
+categories = ["asynchronous", "encoding", "network-programming"]
+rust-version.workspace = true
+
+[features]
+default = []
+# Memory-mapped zero-copy reader: https://docs.rs/memmap2
+mmap = ["dep:memmap2"]
 
 [dependencies]
 crous-core = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
+bytes = { workspace = true }
+memmap2 = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

@@ -3,13 +3,49 @@ name = "crous-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
 description = "Core encoder/decoder, block framing, and Value types for the Crous binary format"
+documentation = "https://docs.rs/crous-core"
+keywords = ["serialization", "binary", "encoding", "codec", "format"]
+categories = ["encoding", "data-structures", "parser-implementations"]
+rust-version.workspace = true
+
+[features]
+default = []
+# Use XXH3-64 for checksums (default uses XXH64 for backward compat)
+xxh3 = []
+# Use CRC32 for checksums (backward-compatible legacy mode)
+compat-crc32 = ["dep:crc32fast"]
+# Bump allocator for per-block decode scratch — reduces small allocations
+fast-alloc = ["dep:bumpalo"]
+# Block-level compression support (encoder/decoder)
+zstd = ["dep:zstd"]
+lz4 = ["dep:lz4_flex"]
+snappy = ["dep:snap"]
 
 [dependencies]
 thiserror = { workspace = true }
 xxhash-rust = { workspace = true }
 base64 = { workspace = true }
 serde_json = { workspace = true }
+bytes = { workspace = true }
+crc32fast = { workspace = true, optional = true }
+bumpalo = { workspace = true, optional = true }
+
+[dependencies.zstd]
+version = "0.13"
+optional = true
+
+[dependencies.lz4_flex]
+version = "0.11"
+optional = true
+
+[dependencies.snap]
+version = "1"
+optional = true
 
 [dev-dependencies]
 proptest = { workspace = true }
