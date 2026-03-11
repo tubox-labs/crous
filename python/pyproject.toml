@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "crous"
-version = "1.1.0"
+version = "1.1.1"
 description = "Pure-Python encoder/decoder for the Crous binary serialization format"
 readme = "README.md"
 license = {text = "MIT OR Apache-2.0"}
