@@ -2,7 +2,7 @@
 
 > A compact, canonical binary serializer and human-readable alternative to JSON.
 
-**Version:** 0.1.0 · **Edition:** 2024 · **MSRV:** 1.85.0 · **License:** MIT OR Apache-2.0
+**Version:** 1.1.0 · **Edition:** 2024 · **MSRV:** 1.85.0 · **License:** MIT OR Apache-2.0
 
 ---
 
@@ -58,7 +58,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-crous-core = "0.1"
+crous-core = "1.1"
 ```
 
 ### Encode & Decode
@@ -280,12 +280,14 @@ let text = pretty_print(&value, 4);  // indent=4
 
 ```rust
 use crous_derive::{Crous, CrousSchema};
+use crous_core::CrousBytes;
 
 #[derive(Debug, PartialEq, Crous, CrousSchema)]
 struct Person {
     #[crous(id = 1)] name: String,
-    #[crous(id = 2)] age: u64,
+    #[crous(id = 2)] age: u8,
     #[crous(id = 3)] tags: Vec<String>,
+    #[crous(id = 4)] avatar: CrousBytes,
 }
 ```
 
@@ -310,7 +312,30 @@ Generates:
 
 ### Blanket Implementations
 
-`Crous` is implemented for: `String`, `u64`, `i64`, `bool`, `f64`, `Vec<T: Crous>`, `Option<T: Crous>`.
+The `Crous` trait has built-in implementations for all common Rust types:
+
+| Rust type | Crous `Value` | Notes |
+|-----------|---------------|-------|
+| `bool` | `Bool` | |
+| `u8`, `u16`, `u32`, `u64`, `usize` | `UInt` | widened to `u64`, range-checked on decode |
+| `u128` | `UInt` | panics on encode if > `u64::MAX` |
+| `i8`, `i16`, `i32`, `i64`, `isize` | `Int` | widened to `i64`, range-checked on decode |
+| `i128` | `Int` | panics on encode if outside `i64` range |
+| `f32`, `f64` | `Float` | `f32` widened to `f64` |
+| `String`, `Box<str>` | `Str` | |
+| `CrousBytes` | `Bytes` | newtype for raw binary blobs |
+| `Vec<u8>` | `Array` of `UInt` | use `CrousBytes` for `Value::Bytes` |
+| `Vec<T: Crous>` | `Array` | |
+| `Option<T: Crous>` | `T` or `Null` | |
+| `Box<T: Crous>` | delegates to `T` | transparent wrapper |
+| `HashMap<String, T>` | `Object` | insertion-order not guaranteed |
+| `BTreeMap<String, T>` | `Object` | sorted by key |
+| `(A,)` … `(A,B,C,D,E,F)` | `Array` | heterogeneous tuples up to 6 elements |
+| `()` | `Null` | unit type |
+
+> **`Vec<u8>` vs `CrousBytes`**: `Vec<u8>` encodes as an `Array` of `UInt` values via the generic `Vec<T>` impl. Use `CrousBytes(Vec<u8>)` when you want the compact `Value::Bytes` wire encoding for raw binary data.
+
+Signed integer types (`i8`–`i64`, `isize`) also accept `Value::UInt` on decode when the value fits, providing cross-compatibility with unsigned encoders.
 
 ---
 
@@ -638,4 +663,4 @@ Measured on **Apple M4** (10 cores), Rust 1.92.0, `--release`, 10 iterations per
 
 ---
 
-*Generated from Crous v0.1.0 codebase. See `docs/SPEC.md` for the full wire format specification.*
+*Generated from Crous v1.1.0 codebase. See `docs/SPEC.md` for the full wire format specification.*

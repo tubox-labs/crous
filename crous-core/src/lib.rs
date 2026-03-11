@@ -45,4 +45,5 @@ pub use error::{CrousError, Result};
 pub use header::{FLAGS_NONE, FileHeader};
 pub use limits::Limits;
 pub use traits::Crous;
+pub use traits::CrousBytes;
 pub use value::{CrousValue, Value};

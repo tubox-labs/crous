@@ -2,7 +2,7 @@
 
 > A compact, canonical binary serializer and human-readable alternative to JSON.
 
-**Version:** 0.1.0 · **Python:** ≥ 3.10 · **License:** MIT OR Apache-2.0
+**Version:** 1.1.0 · **Python:** ≥ 3.10 · **License:** MIT OR Apache-2.0
 
 ---
 
@@ -586,4 +586,4 @@ The native extension uses the same `crous-core` Rust library that powers the CLI
 
 ---
 
-*Generated from Crous v0.1.0 Python codebase. See `docs/SPEC.md` for the full wire format specification.*
+*Generated from Crous v1.1.0 Python codebase. See `docs/SPEC.md` for the full wire format specification.*
