@@ -15,11 +15,16 @@
 fn main() {
     // Tell cargo to re-run this script only when relevant env vars change.
     println!("cargo:rerun-if-env-changed=MATURIN_BUILD_TRIPLE");
+    println!("cargo:rerun-if-env-changed=PYO3_BUILD_EXTENSION_MODULE");
     println!("cargo:rerun-if-env-changed=PYO3_PYTHON");
     println!("cargo:rerun-if-env-changed=PYTHON_SYS_EXECUTABLE");
 
     // If maturin is driving this build it handles Python linking on its own.
-    if std::env::var("MATURIN_BUILD_TRIPLE").is_ok() {
+    // PYO3_BUILD_EXTENSION_MODULE is always set by maturin (including inside Docker).
+    // MATURIN_BUILD_TRIPLE is a secondary fallback for non-Docker maturin builds.
+    if std::env::var("PYO3_BUILD_EXTENSION_MODULE").is_ok()
+        || std::env::var("MATURIN_BUILD_TRIPLE").is_ok()
+    {
         return;
     }
 

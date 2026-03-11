@@ -6,7 +6,7 @@ build-backend = "maturin"
 name = "crous-native"
 version = "1.1.1"
 description = "Native Rust-backed encoder/decoder for the Crous binary format (fast extension)"
-readme = "../README.md"
+readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT OR Apache-2.0"
 authors = [
