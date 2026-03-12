@@ -357,7 +357,7 @@ dependencies = [
 
 [[package]]
 name = "crous-cli"
-version = "1.1.0"
+version = "1.1.2"
 dependencies = [
  "clap",
  "crous-compression",
@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "crous-compression"
-version = "1.1.0"
+version = "1.1.2"
 dependencies = [
  "crous-core",
  "lz4_flex",
@@ -379,7 +379,7 @@ dependencies = [
 
 [[package]]
 name = "crous-core"
-version = "1.1.0"
+version = "1.1.2"
 dependencies = [
  "base64",
  "bumpalo",
@@ -397,7 +397,7 @@ dependencies = [
 
 [[package]]
 name = "crous-derive"
-version = "1.1.0"
+version = "1.1.2"
 dependencies = [
  "crous-core",
  "proc-macro2",
@@ -408,7 +408,7 @@ dependencies = [
 
 [[package]]
 name = "crous-ffi"
-version = "1.1.0"
+version = "1.1.2"
 dependencies = [
  "crous-core",
  "serde_json",
@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "crous-io"
-version = "1.1.0"
+version = "1.1.2"
 dependencies = [
  "bytes",
  "crous-core",
@@ -427,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "crous-python"
-version = "1.1.0"
+version = "1.1.2"
 dependencies = [
  "crous-core",
  "pyo3",
@@ -435,7 +435,7 @@ dependencies = [
 
 [[package]]
 name = "crous-simd"
-version = "1.1.0"
+version = "1.1.2"
 dependencies = [
  "crous-core",
 ]

@@ -394,7 +394,7 @@ impl CrousDecoder {
 /// Provides high-performance encode/decode for the Crous binary format.
 #[pymodule]
 fn _crous_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", "1.1.1")?;
+    m.add("__version__", "1.1.2")?;
     m.add_function(wrap_pyfunction!(encode, m)?)?;
     m.add_function(wrap_pyfunction!(decode, m)?)?;
     m.add_function(wrap_pyfunction!(encode_to_file, m)?)?;

@@ -11,7 +11,7 @@ from os import PathLike
 from typing import Any, Union
 
 __version__: str
-"""Package version string (e.g. ``'1.1.1'``)."""
+"""Package version string (e.g. ``'1.1.2'``)."""
 
 # ---------------------------------------------------------------------------
 # Module-level functions
