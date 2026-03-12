@@ -39,3 +39,7 @@ Documentation = "https://github.com/axiomchronicles/crous/blob/main/docs/PYTHON_
 [tool.maturin]
 features = ["pyo3/extension-module"]
 manifest-path = "Cargo.toml"
+include = [
+    { path = "_crous_native.pyi", format = "sdist" },
+    { path = "_crous_native.pyi", format = "wheel" },
+]

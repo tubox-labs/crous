@@ -222,6 +222,10 @@ jobs:
         run: |
           python -c "
           import _crous_native as cn
+          import os, tempfile
+
+          # Module version
+          assert hasattr(cn, '__version__'), 'missing __version__'
 
           # Encode / decode roundtrip
           obj = {'name': 'Alice', 'age': 30, 'active': True}
@@ -240,6 +244,25 @@ jobs:
           dec = cn.CrousDecoder(data)
           vals = dec.decode_all()
           assert vals[0] == obj
+
+          # File I/O roundtrip
+          tmp = os.path.join(tempfile.gettempdir(), 'crous_smoke.crous')
+          cn.encode_to_file(obj, tmp)
+          assert os.path.isfile(tmp)
+          decoded2 = cn.decode_from_file(tmp)
+          assert decoded2 == obj, 'file roundtrip failed: ' + repr(decoded2)
+          os.remove(tmp)
+
+          # Encoder finish_to_file
+          enc2 = cn.Encoder()
+          enc2.encode({'x': 42})
+          enc2.finish_to_file(tmp)
+          assert cn.decode_from_file(tmp) == {'x': 42}
+          os.remove(tmp)
+
+          # Pretty-print
+          text = cn.pretty_print(obj)
+          assert 'Alice' in text
 
           import sys
           print('All smoke tests passed (Python ' + sys.version + ')')

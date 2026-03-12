@@ -15,6 +15,9 @@ use pyo3::types::{PyBool, PyBytes, PyDict, PyFloat, PyInt, PyList, PyString};
 use crous_core::wire::CompressionType;
 use crous_core::{Decoder as CoreDecoder, Encoder as CoreEncoder, Value};
 
+use std::fs;
+use std::path::PathBuf;
+
 // ---------------------------------------------------------------------------
 // Python ↔ Value conversion helpers
 // ---------------------------------------------------------------------------
@@ -144,6 +147,94 @@ fn decode<'py>(py: Python<'py>, data: &Bound<'py, PyBytes>) -> PyResult<Bound<'p
     }
 }
 
+/// Encode a Python object and write the binary output to a file.
+///
+/// Args:
+///     obj: The Python object to encode (dict, list, str, int, float, bytes, bool, None).
+///     path: File path to write the encoded binary data to.
+///
+/// Raises:
+///     RuntimeError: If encoding fails.
+///     OSError: If writing to the file fails.
+#[pyfunction]
+fn encode_to_file(obj: &Bound<'_, PyAny>, path: &str) -> PyResult<()> {
+    let value = py_to_value(obj)?;
+    let mut encoder = CoreEncoder::new();
+    encoder
+        .encode_value(&value)
+        .map_err(|e| PyRuntimeError::new_err(format!("encode error: {e}")))?;
+    let bytes = encoder
+        .finish()
+        .map_err(|e| PyRuntimeError::new_err(format!("finish error: {e}")))?;
+    fs::write(PathBuf::from(path), &bytes)?;
+    Ok(())
+}
+
+/// Read a Crous binary file and decode it into Python objects.
+///
+/// Args:
+///     path: File path to read the binary data from.
+///
+/// Returns:
+///     The decoded Python object (single value or list of values).
+///
+/// Raises:
+///     RuntimeError: If decoding fails.
+///     OSError: If reading the file fails.
+#[pyfunction]
+fn decode_from_file<'py>(py: Python<'py>, path: &str) -> PyResult<Bound<'py, PyAny>> {
+    let buf = fs::read(PathBuf::from(path))?;
+    let mut decoder = CoreDecoder::new(&buf);
+    let values = decoder
+        .decode_all_owned()
+        .map_err(|e| PyRuntimeError::new_err(format!("decode error: {e}")))?;
+
+    if values.len() == 1 {
+        value_to_py(py, &values[0])
+    } else {
+        let list = PyList::empty(py);
+        for v in &values {
+            list.append(value_to_py(py, v)?)?;
+        }
+        Ok(list.into_any())
+    }
+}
+
+/// Parse Crous human-readable text notation into a Python object.
+///
+/// Args:
+///     text: A string in Crous text format.
+///
+/// Returns:
+///     The parsed Python object.
+///
+/// Raises:
+///     ValueError: If the text cannot be parsed.
+#[pyfunction]
+fn parse_text<'py>(py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyAny>> {
+    let value = crous_core::text::parse(text)
+        .map_err(|e| PyValueError::new_err(format!("parse error: {e}")))?;
+    value_to_py(py, &value)
+}
+
+/// Pretty-print a Python object in Crous human-readable text notation.
+///
+/// Args:
+///     obj: The Python object to format.
+///     indent: Number of spaces per indentation level (default: 2).
+///
+/// Returns:
+///     A string in Crous text format.
+///
+/// Raises:
+///     TypeError: If the object cannot be converted to a Crous value.
+#[pyfunction]
+#[pyo3(signature = (obj, indent=2))]
+fn pretty_print(obj: &Bound<'_, PyAny>, indent: usize) -> PyResult<String> {
+    let value = py_to_value(obj)?;
+    Ok(crous_core::text::pretty_print(&value, indent))
+}
+
 // ---------------------------------------------------------------------------
 // Encoder class
 // ---------------------------------------------------------------------------
@@ -223,6 +314,27 @@ impl Encoder {
             .map_err(|e| PyRuntimeError::new_err(format!("finish error: {e}")))?;
         Ok(PyBytes::new(py, &bytes))
     }
+
+    /// Flush and finalize the encoder, writing the output directly to a file.
+    /// The encoder cannot be used after this call.
+    ///
+    /// Args:
+    ///     path: File path to write the encoded binary data to.
+    ///
+    /// Raises:
+    ///     RuntimeError: If encoding fails or the encoder was already finished.
+    ///     OSError: If writing to the file fails.
+    fn finish_to_file(&mut self, path: &str) -> PyResult<()> {
+        let enc = self
+            .inner
+            .take()
+            .ok_or_else(|| PyRuntimeError::new_err("encoder already finished"))?;
+        let bytes = enc
+            .finish()
+            .map_err(|e| PyRuntimeError::new_err(format!("finish error: {e}")))?;
+        fs::write(PathBuf::from(path), &bytes)?;
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -282,8 +394,13 @@ impl CrousDecoder {
 /// Provides high-performance encode/decode for the Crous binary format.
 #[pymodule]
 fn _crous_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add("__version__", "1.1.1")?;
     m.add_function(wrap_pyfunction!(encode, m)?)?;
     m.add_function(wrap_pyfunction!(decode, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_to_file, m)?)?;
+    m.add_function(wrap_pyfunction!(decode_from_file, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_text, m)?)?;
+    m.add_function(wrap_pyfunction!(pretty_print, m)?)?;
     m.add_class::<Encoder>()?;
     m.add_class::<CrousDecoder>()?;
     Ok(())
